@@ -111,12 +111,62 @@ def test_model():
     return jsonify(config_manager.test_config(d.get("provider", "")))
 
 
+# ── Multi-account management ──────────────────────────────────────────────────
+
+@bp.get("/api/models/accounts/<provider>")
+def list_accounts(provider: str):
+    """List every account configured for a provider (e.g. Claude 企业版 / Pro 版)."""
+    return jsonify({"provider": provider, "accounts": config_manager.list_accounts(provider)})
+
+
+@bp.post("/api/models/accounts/add")
+def add_account():
+    d = request.json or {}
+    ok, msg = config_manager.add_account(
+        provider=d.get("provider", "").strip(),
+        label=d.get("label", "").strip(),
+        api_key=d.get("api_key", ""),
+        base_url=(d.get("base_url", "").strip() or None),
+        model=(d.get("model", "").strip() or None),
+        context_window=_to_int(d.get("context_window")),
+        max_output_tokens=_to_int(d.get("max_output_tokens")),
+        enable_thinking=bool(d.get("enable_thinking", False)),
+        thinking_budget=_to_int(d.get("thinking_budget")) or 8000,
+        make_active=bool(d.get("make_active", True)),
+    )
+    return (jsonify({"ok": True, "message": msg}) if ok
+            else (jsonify({"error": msg}), 400))
+
+
+@bp.post("/api/models/accounts/set-active")
+def set_active_account():
+    d = request.json or {}
+    ok, msg = config_manager.set_active_account(
+        d.get("provider", "").strip(), d.get("config_id", "").strip()
+    )
+    return (jsonify({"ok": True, "message": msg}) if ok
+            else (jsonify({"error": msg}), 400))
+
+
+@bp.post("/api/models/accounts/delete")
+def delete_account():
+    d = request.json or {}
+    ok, msg = config_manager.delete_account(d.get("config_id", "").strip())
+    return (jsonify({"ok": True, "message": msg}) if ok
+            else (jsonify({"error": msg}), 400))
+
+
 @bp.post("/api/session/<sid>/model")
 def set_session_model(sid: str):
     d = request.json or {}
     provider = d.get("provider", "").strip()
-    if not config_manager.get_config(provider):
+    cfg = config_manager.get_config(provider)
+    if not cfg:
         return jsonify({"error": f"未知的模型: {provider}"}), 400
+    # If the selection is a specific account (config_id), make it the active
+    # account for its provider so the switch takes effect globally.
+    if provider in config_manager.configs:
+        config_manager.set_active_account(cfg.provider, provider)
     sess = session_manager.get_or_create(sid)
     sess.model_provider = provider
     return jsonify({"ok": True})

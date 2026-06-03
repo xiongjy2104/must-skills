@@ -22,7 +22,7 @@ LLM_CONFIG_FILE = CONFIG_DIR / "llm_config.json"
 
 @dataclass
 class LLMConfig:
-    """LLM 配置"""
+    """LLM 配置（一条 = 一个账号）"""
     provider: str
     api_key: str
     base_url: Optional[str] = None
@@ -33,6 +33,7 @@ class LLMConfig:
     max_output_tokens: Optional[int] = None  # 最大输出（tokens）
     enable_thinking: bool = False            # 启用推理链（DeepSeek-R1 / Claude 3.7+）
     thinking_budget: int = 8000              # Claude extended thinking budget_tokens
+    label: str = ""                          # 账号显示名（如 "企业版" / "Pro 版"）
 
 
 class LLMConfigManager:
@@ -63,23 +64,154 @@ class LLMConfigManager:
         load_from_env=False: 默认不从环境变量回灌，避免“删了又出现”
         """
         self.configs: Dict[str, LLMConfig] = {}
+        # provider → 当前选中的账号 config_id（多账号切换的指针）
+        self._active: Dict[str, str] = {}
         self.load_configs(load_from_env=load_from_env)
 
     def load_configs(self, load_from_env: bool = False):
-        """从文件加载配置"""
+        """从文件加载配置。
+
+        向后兼容旧格式：旧 JSON 形如 {provider: {...}}，每条即一个账号，
+        其 config_id 等于 provider。新格式额外保存一个保留键 "__active__"，
+        记录每个 provider 当前选中的账号。
+        """
         self.configs = {}
+        self._active = {}
 
         if LLM_CONFIG_FILE.exists():
             try:
                 with open(LLM_CONFIG_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    for provider, config in data.items():
-                        self.configs[provider] = LLMConfig(**config)
+                    self._active = dict(data.pop("__active__", {}) or {})
+                    for config_id, config in data.items():
+                        # 容错：忽略 dataclass 不认识的多余字段
+                        known = {k: v for k, v in config.items()
+                                 if k in LLMConfig.__dataclass_fields__}
+                        self.configs[config_id] = LLMConfig(**known)
             except Exception as e:
                 log.error("加载配置失败: %s", e)
 
         if load_from_env:
             self._load_from_env()
+
+    # ── 多账号支持 ────────────────────────────────────────────────────────────
+
+    def _accounts_of(self, provider: str) -> List[str]:
+        """返回某 provider 下所有账号的 config_id 列表。"""
+        return [cid for cid, c in self.configs.items() if c.provider == provider]
+
+    def resolve(self, provider_or_id: str) -> Optional[str]:
+        """把 provider 名或 config_id 解析成具体的账号 config_id。
+
+        优先级（注意：首个账号的 config_id 与 provider 名相同，故活跃指针必须先查）：
+        1. 该 provider 有活跃指针 → 用活跃账号；
+        2. 传入值本身就是一个 config_id → 直接返回；
+        3. 视为 provider 名 → 第一个启用的账号 / 任意账号。
+
+        切换账号 = 设置活跃指针（set_active_account），因此「选哪个账号」
+        全局生效，resolve(provider) 与 resolve(config_id) 结果一致。
+        """
+        active = self._active.get(provider_or_id)
+        if active and active in self.configs:
+            return active
+        if provider_or_id in self.configs:
+            return provider_or_id
+        accounts = self._accounts_of(provider_or_id)
+        enabled = [c for c in accounts if self.configs[c].enabled]
+        if enabled:
+            return enabled[0]
+        return accounts[0] if accounts else None
+
+    def add_account(
+        self, provider: str, label: str, api_key: str,
+        base_url: Optional[str] = None, model: Optional[str] = None,
+        context_window: Optional[int] = None, max_output_tokens: Optional[int] = None,
+        enable_thinking: bool = False, thinking_budget: int = 8000,
+        make_active: bool = True,
+    ) -> tuple[bool, str]:
+        """为某个 provider 新增一个账号（如同一家的企业版 / Pro 版）。"""
+        if not provider or not provider.strip():
+            return False, "provider 不能为空"
+        if not api_key or not api_key.strip():
+            return False, "API Key 不能为空"
+        provider = provider.strip()
+
+        # 若该 provider 还没有任何账号，首个账号沿用 id==provider（兼容旧逻辑）。
+        if not self._accounts_of(provider):
+            config_id = provider
+        else:
+            n = 2
+            while f"{provider}#{n}" in self.configs:
+                n += 1
+            config_id = f"{provider}#{n}"
+
+        defaults = self.DEFAULT_CONFIGS.get(provider, {})
+        self.configs[config_id] = LLMConfig(
+            provider=provider,
+            api_key=api_key.strip(),
+            base_url=(base_url.strip() if base_url else defaults.get("base_url")),
+            model=(model.strip() if model else defaults.get("model")),
+            enabled=True,
+            is_custom=defaults == {},  # provider 不在内置表里 → 视为自定义家族
+            context_window=context_window if context_window is not None else defaults.get("context_window"),
+            max_output_tokens=max_output_tokens if max_output_tokens is not None else defaults.get("max_output_tokens"),
+            enable_thinking=enable_thinking,
+            thinking_budget=thinking_budget,
+            label=label.strip() or config_id,
+        )
+        if make_active or provider not in self._active:
+            self._active[provider] = config_id
+
+        if self.save_configs():
+            return True, f"账号「{label or config_id}」添加成功"
+        del self.configs[config_id]
+        return False, "保存配置失败"
+
+    def set_active_account(self, provider: str, config_id: str) -> tuple[bool, str]:
+        """切换某 provider 当前使用的账号。"""
+        if config_id not in self.configs:
+            return False, f"账号 '{config_id}' 不存在"
+        if self.configs[config_id].provider != provider:
+            return False, f"账号 '{config_id}' 不属于 provider '{provider}'"
+        self._active[provider] = config_id
+        if self.save_configs():
+            return True, "已切换默认账号"
+        return False, "保存失败"
+
+    def delete_account(self, config_id: str) -> tuple[bool, str]:
+        """删除一个账号。若删的是活跃账号，自动切到同 provider 的其它账号。"""
+        cfg = self.configs.get(config_id)
+        if not cfg:
+            return False, f"账号 '{config_id}' 不存在"
+        provider = cfg.provider
+        del self.configs[config_id]
+        if self._active.get(provider) == config_id:
+            remaining = self._accounts_of(provider)
+            if remaining:
+                self._active[provider] = remaining[0]
+            else:
+                self._active.pop(provider, None)
+        if self.save_configs():
+            return True, f"账号 '{config_id}' 已删除"
+        self.configs[config_id] = cfg
+        return False, "删除失败"
+
+    def list_accounts(self, provider: str) -> List[Dict[str, Any]]:
+        """列出某 provider 下所有账号（不含明文 key）。"""
+        active = self._active.get(provider)
+        result = []
+        for cid in self._accounts_of(provider):
+            c = self.configs[cid]
+            result.append({
+                "config_id": cid,
+                "label": c.label or cid,
+                "model": c.model,
+                "base_url": c.base_url,
+                "enabled": c.enabled,
+                "has_api_key": bool(c.api_key),
+                "is_active": cid == active,
+            })
+        return result
 
     def _load_from_env(self):
         """从环境变量加载内置提供商配置（仅在显式开启时使用）"""
@@ -101,9 +233,13 @@ class LLMConfigManager:
         """保存配置到文件"""
         try:
             data = {
-                provider: asdict(config)
-                for provider, config in self.configs.items()
+                config_id: asdict(config)
+                for config_id, config in self.configs.items()
             }
+            # 仅保留仍然有效的活跃指针
+            active = {p: cid for p, cid in self._active.items() if cid in self.configs}
+            if active:
+                data["__active__"] = active
             with open(LLM_CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             return True
@@ -198,7 +334,9 @@ class LLMConfigManager:
         return False, "保存配置失败"
 
     def get_config(self, provider: str) -> Optional[LLMConfig]:
-        return self.configs.get(provider)
+        """按 config_id 或 provider 名取配置（provider 名 → 解析到活跃账号）。"""
+        config_id = self.resolve(provider)
+        return self.configs.get(config_id) if config_id else None
 
     def update_custom_model(
         self, provider: str, base_url: str, model_name: str, api_key: str,
@@ -267,23 +405,27 @@ class LLMConfigManager:
         ]
 
     def get_default_provider(self) -> Optional[str]:
+        """返回默认使用的账号 config_id（按 provider 优先级解析到活跃账号）。"""
         priority = ["deepseek", "openai", "claude"]
         for provider in priority:
-            if provider in self.configs and self.configs[provider].enabled:
-                return provider
+            cid = self.resolve(provider)
+            if cid and self.configs[cid].enabled:
+                return cid
 
-        for provider, config in self.configs.items():
+        for config_id, config in self.configs.items():
             if config.is_custom and config.enabled:
-                return provider
+                return config_id
 
         return None
 
     def list_configs(self) -> Dict[str, Any]:
-        """注意：不返回 api_key 明文"""
+        """注意：不返回 api_key 明文。键为 config_id（多账号时一个 provider 有多条）。"""
         result = {}
-        for provider, config in self.configs.items():
-            result[provider] = {
+        for config_id, config in self.configs.items():
+            result[config_id] = {
+                "config_id": config_id,
                 "provider": config.provider,
+                "label": config.label or config_id,
                 "base_url": config.base_url,
                 "model": config.model,
                 "enabled": config.enabled,
@@ -292,6 +434,7 @@ class LLMConfigManager:
                 "context_window": config.context_window,
                 "max_output_tokens": config.max_output_tokens,
                 "enable_thinking": config.enable_thinking,
+                "is_active": self._active.get(config.provider) == config_id,
             }
         return result
 
@@ -352,20 +495,26 @@ def get_llm_client_with_fallback(preferred_provider: Optional[str] = None):
     manager = get_config_manager()
     from openai import OpenAI
 
-    # Build candidate list: preferred first, then priority order
+    # Build candidate list of concrete account config_ids: preferred first
+    # (resolved to its active account), then priority providers, then any
+    # other enabled account. This lets a provider with several accounts fall
+    # back across providers — not across accounts of the same one — by default.
     candidates: List[str] = []
+
+    def _add(cid: Optional[str]):
+        if cid and cid in manager.configs and manager.configs[cid].enabled and cid not in candidates:
+            candidates.append(cid)
+
     if preferred_provider:
-        candidates.append(preferred_provider)
+        _add(manager.resolve(preferred_provider))
 
-    priority = ["deepseek", "openai", "claude"]
-    for p in priority:
-        if p not in candidates and p in manager.configs and manager.configs[p].enabled:
-            candidates.append(p)
+    for p in ["deepseek", "openai", "claude"]:
+        _add(manager.resolve(p))
 
-    # Append any enabled custom models not already listed
-    for p, cfg in manager.configs.items():
-        if p not in candidates and cfg.is_custom and cfg.enabled:
-            candidates.append(p)
+    # Append any other enabled account (covers extra accounts + custom models)
+    for cid, cfg in manager.configs.items():
+        if cfg.enabled:
+            _add(cid)
 
     last_exc: Optional[Exception] = None
     for provider in candidates:
