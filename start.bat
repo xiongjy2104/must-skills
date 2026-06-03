@@ -137,11 +137,26 @@ if not exist "%APP_FILE%" (
 rem =========================================================
 rem  Check port
 rem =========================================================
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr /r /c:":%PORT% .*LISTENING"') do (
-    echo [ERROR] Port %PORT% is already in use. PID=%%a
-    echo [TIP] Use: tasklist /fi "PID eq %%a"
-    pause
-    exit /b 1
+set "PORT_PID="
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /r /c:":%PORT% .*LISTENING"') do set "PORT_PID=%%a"
+
+if defined PORT_PID (
+    echo [WARN] Port %PORT% is already in use by PID=%PORT_PID%.
+    echo [INFO] This is usually a leftover server from a previous run.
+    choice /c YN /m "Terminate that process and continue"
+    if errorlevel 2 (
+        echo [ERROR] Aborted. Port %PORT% is busy.
+        pause
+        exit /b 1
+    )
+    taskkill /pid %PORT_PID% /f >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Failed to terminate PID=%PORT_PID%. Try closing it manually.
+        pause
+        exit /b 1
+    )
+    echo [INFO] Terminated PID=%PORT_PID%. Waiting for the port to free up...
+    timeout /t 2 >nul
 )
 
 rem =========================================================
