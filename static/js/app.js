@@ -33,6 +33,10 @@
     connectDB:         () => window.BAA.datasource.connectDB(),
     connectGSheets:    () => window.BAA.datasource.connectGSheets(),
     connectAPI:        () => window.BAA.datasource.connectAPI(),
+    connectMaxCompute: () => window.BAA.datasource.connectMaxCompute(),
+    connectSelectDB:   () => window.BAA.datasource.connectSelectDB(),
+    connectOSS:        () => window.BAA.datasource.connectOSS(),
+    connectLark:       () => window.BAA.datasource.connectLark(),
 
     // Settings — model providers
     toggleAddCustom:   () => window.BAA.models.toggleAddCustom(),

@@ -81,6 +81,49 @@
       if (api.name) $("api-name").value = api.name;
       _showDsStatus("api-status", api.name || api.url);
     }
+
+    // ── Alibaba Cloud / Lark sources ──────────────────────────────────────
+    const mc = cfgs.maxcompute || {};
+    if (mc.project) {
+      if (mc.access_id) $("mc-access-id").value = mc.access_id;
+      if (mc.project)   $("mc-project").value   = mc.project;
+      if (mc.endpoint)  $("mc-endpoint").value  = mc.endpoint;
+      if (mc.name)      $("mc-name").value       = mc.name;
+      if (mc.has_access_key) $("mc-access-key").placeholder = t('ds.conn_saved_ph');
+      _showDsStatus("mc-status", mc.name || mc.project);
+    }
+
+    const sdb = cfgs.selectdb || {};
+    if (sdb.host) {
+      $("sdb-host").value     = sdb.host || "";
+      $("sdb-port").value     = sdb.port || 9030;
+      $("sdb-user").value     = sdb.user || "";
+      $("sdb-database").value = sdb.database || "";
+      if (sdb.name) $("sdb-name").value = sdb.name;
+      if (sdb.has_password) $("sdb-password").placeholder = t('ds.conn_saved_ph');
+      _showDsStatus("sdb-status", sdb.name || sdb.database);
+    }
+
+    const oss = cfgs.oss || {};
+    if (oss.bucket) {
+      $("oss-endpoint").value = oss.endpoint || "";
+      $("oss-bucket").value   = oss.bucket || "";
+      $("oss-object").value   = oss.object_key || "";
+      $("oss-ak-id").value    = oss.access_key_id || "";
+      if (oss.name) $("oss-name").value = oss.name;
+      if (oss.has_access_key_secret) $("oss-ak-secret").placeholder = t('ds.conn_saved_ph');
+      _showDsStatus("oss-status", oss.name || oss.bucket);
+    }
+
+    const lark = cfgs.lark || {};
+    if (lark.spreadsheet_token) {
+      $("lark-server").value = lark.server_id || "";
+      $("lark-token").value  = lark.spreadsheet_token || "";
+      $("lark-tool").value   = lark.read_tool || "";
+      $("lark-ranges").value = (lark.ranges || []).join(", ");
+      if (lark.name) $("lark-name").value = lark.name;
+      _showDsStatus("lark-status", lark.name || "Lark");
+    }
   }
 
   async function disconnectSrc() {
@@ -258,9 +301,87 @@
     window.sysMsg(t('sys.connected', { name: d.source_name }));
   }
 
+  // ── Alibaba Cloud / Lark custom sources ─────────────────────────────────
+  // Generic connect: POST `payload` to `endpoint`, then update UI on success.
+  // `ui` carries the per-source DOM id prefix, overlay id, hint key and toast.
+  async function _connect(endpoint, payload, ui) {
+    const errEl = $(ui.prefix + "-err");
+    if (errEl) errEl.textContent = "";
+    const loadingEl = $(ui.prefix + "-loading");
+    const btn       = $(ui.prefix + "-btn");
+    if (loadingEl) loadingEl.style.display = "";
+    if (btn) btn.disabled = true;
+
+    let d;
+    try {
+      const r = await fetch(`/api/session/${state.SID}/${endpoint}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      d = await r.json();
+    } catch (e) {
+      d = { error: (e && e.message) || "网络错误" };
+    }
+
+    if (loadingEl) loadingEl.style.display = "none";
+    if (btn) btn.disabled = false;
+    if (d.error) { if (errEl) errEl.textContent = d.error; return; }
+
+    state.schemaText = d.schema_preview || "";
+    const schemaEl = $(ui.prefix + "-schema");
+    if (schemaEl) { schemaEl.textContent = state.schemaText; schemaEl.style.display = "block"; }
+    setSrc(d.source_name, ui.hintKey, true);
+    closeOverlay(ui.overlay);
+    toast(t(ui.toastKey), "ok");
+    window.sysMsg(t('sys.connected', { name: d.source_name }));
+  }
+
+  async function connectMaxCompute() {
+    await _connect("connect-maxcompute", {
+      name:       $("mc-name").value.trim(),
+      access_id:  $("mc-access-id").value.trim(),
+      access_key: $("mc-access-key").value.trim(),
+      project:    $("mc-project").value.trim(),
+      endpoint:   $("mc-endpoint").value.trim(),
+    }, { prefix: "mc", overlay: "ov-maxcompute", hintKey: "src.hint.db", toastKey: "toast.db_ok" });
+  }
+
+  async function connectSelectDB() {
+    await _connect("connect-selectdb", {
+      name:     $("sdb-name").value.trim(),
+      host:     $("sdb-host").value.trim(),
+      port:     $("sdb-port").value.trim(),
+      user:     $("sdb-user").value.trim(),
+      password: $("sdb-password").value.trim(),
+      database: $("sdb-database").value.trim(),
+    }, { prefix: "sdb", overlay: "ov-selectdb", hintKey: "src.hint.db", toastKey: "toast.db_ok" });
+  }
+
+  async function connectOSS() {
+    await _connect("connect-oss", {
+      name:              $("oss-name").value.trim(),
+      endpoint:          $("oss-endpoint").value.trim(),
+      bucket:            $("oss-bucket").value.trim(),
+      object_key:        $("oss-object").value.trim(),
+      access_key_id:     $("oss-ak-id").value.trim(),
+      access_key_secret: $("oss-ak-secret").value.trim(),
+    }, { prefix: "oss", overlay: "ov-oss", hintKey: "src.hint.file", toastKey: "toast.upload_ok" });
+  }
+
+  async function connectLark() {
+    await _connect("connect-lark", {
+      name:              $("lark-name").value.trim(),
+      server_id:         $("lark-server").value.trim(),
+      spreadsheet_token: $("lark-token").value.trim(),
+      ranges:            $("lark-ranges").value.trim(),
+      read_tool:         $("lark-tool").value.trim(),
+    }, { prefix: "lark", overlay: "ov-lark", hintKey: "src.hint.gsheets", toastKey: "toast.gsheets_ok" });
+  }
+
   window.BAA.datasource = {
     setSrc, loadDatasourceConfigs, disconnectSrc,
     onXlFile, uploadXl, connectDB, connectGSheets, connectAPI, toggleApiAuthValue,
+    connectMaxCompute, connectSelectDB, connectOSS, connectLark,
   };
 
   // Backward-compat (used by sessions.js and language change handler).

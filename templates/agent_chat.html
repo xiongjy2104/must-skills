@@ -68,6 +68,10 @@
           <button class="sb-dropdown-item" data-action="openOverlay:ov-db"      data-i18n="sidebar.connect_db">🗄️ 连接 SQL 数据库</button>
           <button class="sb-dropdown-item" data-action="openOverlay:ov-gsheets" data-i18n="sidebar.connect_gsheets">📊 连接 Google Sheets</button>
           <button class="sb-dropdown-item" data-action="openOverlay:ov-api"     data-i18n="sidebar.connect_api">🔗 连接自定义 API</button>
+          <button class="sb-dropdown-item" data-action="openOverlay:ov-maxcompute" data-i18n="sidebar.connect_maxcompute">🟠 连接 MaxCompute / DataWorks</button>
+          <button class="sb-dropdown-item" data-action="openOverlay:ov-selectdb"   data-i18n="sidebar.connect_selectdb">🟢 连接 SelectDB</button>
+          <button class="sb-dropdown-item" data-action="openOverlay:ov-oss"        data-i18n="sidebar.connect_oss">🪣 连接 OSS 文件</button>
+          <button class="sb-dropdown-item" data-action="openOverlay:ov-lark"       data-i18n="sidebar.connect_lark">📋 连接 Lark 在线表格</button>
           <hr class="sb-dropdown-sep" id="sb-disc-sep" hidden>
           <button class="sb-dropdown-item sb-dropdown-item--danger"
                   id="btn-disc" hidden data-action="disconnectSrc"
@@ -331,6 +335,163 @@
     <div class="modal-footer">
       <button class="btn-sm btn-sm-ghost"   id="api-cancel-btn" data-action="closeOverlay:ov-api" data-i18n="modal.cancel">取消</button>
       <button class="btn-sm btn-sm-primary" id="api-btn"        data-action="connectAPI"           data-i18n="modal.connect">连接</button>
+    </div>
+  </div>
+</div>
+
+<!-- MaxCompute / DataWorks connect -->
+<div class="overlay" id="ov-maxcompute">
+  <div class="modal">
+    <div class="modal-title" data-i18n="modal.mc.title">🟠 连接 MaxCompute / DataWorks</div>
+    <div class="msg-ok" id="mc-status" style="display:none"></div>
+    <div class="f-row">
+      <label data-i18n="modal.mc.name_label">显示名称（可选）</label>
+      <input type="text" id="mc-name" data-i18n-ph="modal.mc.name_ph" placeholder="例如：生产数仓">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.mc.project_label">项目名 (Project)</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="mc-project" placeholder="my_maxcompute_project">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.mc.endpoint_label">Endpoint</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="mc-endpoint" placeholder="http://service.cn-hangzhou.maxcompute.aliyun.com/api">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.mc.akid_label">AccessKey ID</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="mc-access-id" placeholder="LTAI...">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.mc.aksecret_label">AccessKey Secret</span><span style="color:#ef4444"> *</span></label>
+      <input type="password" id="mc-access-key" placeholder="••••••••">
+    </div>
+    <div class="ds-loading" id="mc-loading" style="display:none">
+      <div class="ds-spinner"></div><span data-i18n="ds.connecting">正在连接并解析数据…</span>
+    </div>
+    <pre class="schema-box" id="mc-schema" style="display:none"></pre>
+    <div class="msg-err" id="mc-err"></div>
+    <div class="modal-footer">
+      <button class="btn-sm btn-sm-ghost"   id="mc-cancel-btn" data-action="closeOverlay:ov-maxcompute" data-i18n="modal.cancel">取消</button>
+      <button class="btn-sm btn-sm-primary" id="mc-btn"        data-action="connectMaxCompute"          data-i18n="modal.connect">连接</button>
+    </div>
+  </div>
+</div>
+
+<!-- SelectDB connect -->
+<div class="overlay" id="ov-selectdb">
+  <div class="modal">
+    <div class="modal-title" data-i18n="modal.sdb.title">🟢 连接 SelectDB</div>
+    <div class="msg-ok" id="sdb-status" style="display:none"></div>
+    <div class="f-row">
+      <label data-i18n="modal.sdb.name_label">显示名称（可选）</label>
+      <input type="text" id="sdb-name" data-i18n-ph="modal.sdb.name_ph" placeholder="例如：SelectDB 实时数仓">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.sdb.host_label">Host</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="sdb-host" placeholder="xxx.selectdbfe.rds.aliyuncs.com">
+    </div>
+    <div class="f-row">
+      <label data-i18n="modal.sdb.port_label">端口 (默认 9030)</label>
+      <input type="text" id="sdb-port" value="9030" placeholder="9030">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.sdb.user_label">用户名</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="sdb-user" placeholder="admin">
+    </div>
+    <div class="f-row">
+      <label data-i18n="modal.sdb.password_label">密码</label>
+      <input type="password" id="sdb-password" placeholder="••••••••">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.sdb.database_label">数据库名</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="sdb-database" placeholder="analytics">
+    </div>
+    <div class="ds-loading" id="sdb-loading" style="display:none">
+      <div class="ds-spinner"></div><span data-i18n="ds.connecting">正在连接并解析数据…</span>
+    </div>
+    <pre class="schema-box" id="sdb-schema" style="display:none"></pre>
+    <div class="msg-err" id="sdb-err"></div>
+    <div class="modal-footer">
+      <button class="btn-sm btn-sm-ghost"   id="sdb-cancel-btn" data-action="closeOverlay:ov-selectdb" data-i18n="modal.cancel">取消</button>
+      <button class="btn-sm btn-sm-primary" id="sdb-btn"        data-action="connectSelectDB"          data-i18n="modal.connect">连接</button>
+    </div>
+  </div>
+</div>
+
+<!-- OSS file connect -->
+<div class="overlay" id="ov-oss">
+  <div class="modal">
+    <div class="modal-title" data-i18n="modal.oss.title">🪣 连接 OSS 文件</div>
+    <div class="msg-ok" id="oss-status" style="display:none"></div>
+    <div class="f-row">
+      <label data-i18n="modal.oss.name_label">显示名称（可选）</label>
+      <input type="text" id="oss-name" placeholder="例如：月度销售报表">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.oss.endpoint_label">Endpoint</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="oss-endpoint" placeholder="https://oss-cn-hangzhou.aliyuncs.com">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.oss.bucket_label">Bucket</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="oss-bucket" placeholder="my-bucket">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.oss.object_label">对象 Key（.xlsx/.xls/.csv）</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="oss-object" placeholder="reports/2026/sales.xlsx">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.oss.akid_label">AccessKey ID</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="oss-ak-id" placeholder="LTAI...">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.oss.aksecret_label">AccessKey Secret</span><span style="color:#ef4444"> *</span></label>
+      <input type="password" id="oss-ak-secret" placeholder="••••••••">
+    </div>
+    <div class="ds-loading" id="oss-loading" style="display:none">
+      <div class="ds-spinner"></div><span data-i18n="ds.connecting">正在连接并解析数据…</span>
+    </div>
+    <pre class="schema-box" id="oss-schema" style="display:none"></pre>
+    <div class="msg-err" id="oss-err"></div>
+    <div class="modal-footer">
+      <button class="btn-sm btn-sm-ghost"   id="oss-cancel-btn" data-action="closeOverlay:ov-oss" data-i18n="modal.cancel">取消</button>
+      <button class="btn-sm btn-sm-primary" id="oss-btn"        data-action="connectOSS"          data-i18n="modal.connect">连接</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lark online sheet connect (via Lark MCP) -->
+<div class="overlay" id="ov-lark">
+  <div class="modal">
+    <div class="modal-title" data-i18n="modal.lark.title">📋 连接 Lark 在线表格</div>
+    <div class="msg-ok" id="lark-status" style="display:none"></div>
+    <div class="f-hint" data-i18n="modal.lark.hint">需先在「MCP 设置」中添加并连接 Lark MCP 服务器。</div>
+    <div class="f-row">
+      <label data-i18n="modal.lark.name_label">显示名称（可选）</label>
+      <input type="text" id="lark-name" placeholder="例如：运营周报表">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.lark.server_label">Lark MCP 服务器 ID</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="lark-server" placeholder="lark">
+    </div>
+    <div class="f-row">
+      <label><span data-i18n="modal.lark.token_label">电子表格 token</span><span style="color:#ef4444"> *</span></label>
+      <input type="text" id="lark-token" placeholder="shtcnXXXXXXXXXXXXXXXX">
+    </div>
+    <div class="f-row">
+      <label data-i18n="modal.lark.ranges_label">范围 / Sheet（可选，逗号分隔）</label>
+      <input type="text" id="lark-ranges" placeholder="Sheet1!A1:Z1000, Sheet2">
+    </div>
+    <div class="f-row">
+      <label data-i18n="modal.lark.tool_label">读取工具名（可选，留空自动探测）</label>
+      <input type="text" id="lark-tool" placeholder="例如：sheets_v2_spreadsheet_values_get">
+    </div>
+    <div class="ds-loading" id="lark-loading" style="display:none">
+      <div class="ds-spinner"></div><span data-i18n="ds.connecting">正在连接并解析数据…</span>
+    </div>
+    <pre class="schema-box" id="lark-schema" style="display:none"></pre>
+    <div class="msg-err" id="lark-err"></div>
+    <div class="modal-footer">
+      <button class="btn-sm btn-sm-ghost"   id="lark-cancel-btn" data-action="closeOverlay:ov-lark" data-i18n="modal.cancel">取消</button>
+      <button class="btn-sm btn-sm-primary" id="lark-btn"        data-action="connectLark"          data-i18n="modal.connect">连接</button>
     </div>
   </div>
 </div>
