@@ -1,12 +1,20 @@
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
-*.py[cod]
-*.egg-info/
+*.pyc
 .venv/
 venv/
-.env
-.pytest_cache/
-.coverage
-.mypy_cache/
-.ruff_cache/
-.idea/
-.vscode/
+
+# Runtime artifacts
+outputs/
+persist/
+.docker-persist/
+
+# Local config written at runtime (kept out of git; persisted via volumes in Docker)
+LLM/llm_config.json
+LLM/mcp_config.json
+data/datasource_config.json

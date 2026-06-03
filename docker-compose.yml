@@ -1,0 +1,36 @@
+# Data-Analysis-Agent (custom build) — Alibaba Cloud ECS / 容器部署
+# Usage:
+#   cp .env.example .env   # fill in secrets, then:
+#   docker compose up -d --build
+services:
+  agent:
+    build: .
+    image: data-analysis-agent:custom
+    container_name: data-analysis-agent
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    # Secrets / API keys come from .env (never bake them into the image).
+    env_file:
+      - .env
+    environment:
+      LLM_CONFIG_DIR: /app/persist/llm
+      DATASOURCE_CONFIG_DIR: /app/persist/data
+    volumes:
+      # Config + secrets (model accounts, MCP servers, data source configs).
+      - agent_persist:/app/persist
+      # Generated artifacts (charts, exports, saved sessions, logs).
+      - agent_outputs:/app/outputs
+      # Uploaded files + knowledge base.
+      - agent_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:5001/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  agent_persist:
+  agent_outputs:
+  agent_uploads:
