@@ -286,7 +286,7 @@
 
     en: {
       // ── App ──────────────────────────────────────────────────────
-      'app.title': 'SageAgent',
+      'app.title': 'Greq',
       'app.subtitle': 'Intelligent Analysis Agent',
       // ── Sidebar ──────────────────────────────────────────────────
       'sidebar.datasource': 'Data Source',
