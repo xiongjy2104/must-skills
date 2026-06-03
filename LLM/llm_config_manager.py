@@ -130,6 +130,21 @@ class LLMConfigManager:
         if load_from_env:
             self._load_from_env()
 
+        # Auto-register providers that need no API key (e.g. claude_cli)
+        # so they're available without a manual UI save step.
+        for provider, defaults in self.DEFAULT_CONFIGS.items():
+            if defaults.get("no_api_key") and not self._accounts_of(provider):
+                self.configs[provider] = LLMConfig(
+                    provider=provider,
+                    api_key="",
+                    base_url=defaults.get("base_url"),
+                    model=defaults.get("model"),
+                    enabled=True,
+                    is_custom=False,
+                    context_window=defaults.get("context_window"),
+                    max_output_tokens=defaults.get("max_output_tokens"),
+                )
+
     # ── 多账号支持 ────────────────────────────────────────────────────────────
 
     def _accounts_of(self, provider: str) -> List[str]:
