@@ -34,7 +34,9 @@ def set_builtin():
     max_output_tokens = _to_int(d.get("max_output_tokens"))
     enable_thinking   = bool(d.get("enable_thinking", False))
     thinking_budget   = _to_int(d.get("thinking_budget")) or 8000
-    if not provider or not api_key:
+    from LLM.llm_config_manager import LLMConfigManager
+    no_api_key = LLMConfigManager.DEFAULT_CONFIGS.get(provider, {}).get("no_api_key", False)
+    if not provider or (not no_api_key and not api_key):
         return jsonify({"error": "provider 和 api_key 不能为空"}), 400
     ok = config_manager.set_config(
         provider, api_key, base_url=base_url, model=model,

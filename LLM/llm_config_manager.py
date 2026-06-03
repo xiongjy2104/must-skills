@@ -72,6 +72,26 @@ class LLMConfigManager:
             "context_window": 200000,
             "max_output_tokens": 64000,
         },
+        "gemini": {
+            # Google Gemini OpenAI-compatible endpoint.
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "model": "gemini-2.0-flash",
+            "env_var": "GEMINI_API_KEY",
+            "is_custom": False,
+            "context_window": 1048576,
+            "max_output_tokens": 8192,
+        },
+        "claude_cli": {
+            # Local Claude Code CLI (uses claude.ai subscription / OAuth token).
+            # No API key required — auth is handled by the CLI itself.
+            "base_url": None,
+            "model": "claude",          # informational; CLI picks its own model
+            "env_var": "CLAUDE_CODE_OAUTH_TOKEN",
+            "is_custom": False,
+            "context_window": 200000,
+            "max_output_tokens": 64000,
+            "no_api_key": True,         # api_key field is optional for this provider
+        },
     }
 
     def __init__(self, load_from_env: bool = False):
@@ -148,9 +168,10 @@ class LLMConfigManager:
         """为某个 provider 新增一个账号（如同一家的企业版 / Pro 版）。"""
         if not provider or not provider.strip():
             return False, "provider 不能为空"
-        if not api_key or not api_key.strip():
-            return False, "API Key 不能为空"
         provider = provider.strip()
+        no_api_key = self.DEFAULT_CONFIGS.get(provider, {}).get("no_api_key", False)
+        if not no_api_key and (not api_key or not api_key.strip()):
+            return False, "API Key 不能为空"
 
         # 若该 provider 还没有任何账号，首个账号沿用 id==provider（兼容旧逻辑）。
         if not self._accounts_of(provider):
@@ -311,7 +332,8 @@ class LLMConfigManager:
             log.warning("不支持的提供商: %s", provider)
             return False
 
-        if not api_key or not api_key.strip():
+        no_api_key = self.DEFAULT_CONFIGS[provider].get("no_api_key", False)
+        if not no_api_key and (not api_key or not api_key.strip()):
             log.warning("API Key 不能为空")
             return False
 
@@ -422,7 +444,7 @@ class LLMConfigManager:
 
     def get_default_provider(self) -> Optional[str]:
         """返回默认使用的账号 config_id（按 provider 优先级解析到活跃账号）。"""
-        priority = ["deepseek", "openai", "claude"]
+        priority = ["deepseek", "openai", "claude", "gemini"]
         for provider in priority:
             cid = self.resolve(provider)
             if cid and self.configs[cid].enabled:
@@ -495,6 +517,11 @@ def get_llm_client(provider: Optional[str] = None):
     if not config:
         raise ValueError(f"未找到 {provider} 的配置")
 
+    # CLI provider: return subprocess-based client instead of OpenAI SDK client
+    if config.provider == "claude_cli":
+        from agent.cli_client import ClaudeCliClient
+        return ClaudeCliClient(cli_path="claude")
+
     from openai import OpenAI
     return OpenAI(api_key=config.api_key, base_url=config.base_url)
 
@@ -524,7 +551,7 @@ def get_llm_client_with_fallback(preferred_provider: Optional[str] = None):
     if preferred_provider:
         _add(manager.resolve(preferred_provider))
 
-    for p in ["deepseek", "openai", "claude"]:
+    for p in ["deepseek", "openai", "claude", "gemini"]:
         _add(manager.resolve(p))
 
     # Append any other enabled account (covers extra accounts + custom models)
