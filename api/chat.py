@@ -1,0 +1,200 @@
+"""Blueprint: conversation (SSE streaming) and chart serving."""
+import json
+import logging
+import uuid
+
+from flask import Blueprint, request, Response, jsonify
+
+from .state import session_manager, config_manager, chart_store
+from agent.agent import BusinessAgent
+
+log = logging.getLogger(__name__)
+bp = Blueprint("chat", __name__)
+
+
+def _build_agent(sess) -> BusinessAgent:
+    provider = sess.model_provider or config_manager.get_default_provider()
+    if not provider:
+        raise ValueError("未配置任何 LLM 模型，请先在「模型设置」中添加模型。")
+    from LLM.llm_config_manager import get_llm_client
+    client = get_llm_client(provider)
+    cfg = config_manager.get_config(provider)
+    return BusinessAgent(
+        client=client, model=cfg.model, data_source=sess.data_source,
+        enable_thinking=cfg.enable_thinking,
+        thinking_budget=cfg.thinking_budget,
+        chart_store=chart_store,
+        session_chart_ids=list(getattr(sess, "chart_ids", [])),
+        color_scheme=getattr(sess, "ppt_color_scheme", "mckinsey"),
+        session_id=sess.session_id,
+        # Pass the configured context window so the compaction trigger and the
+        # frontend context bar agree on the same denominator.
+        context_window=getattr(cfg, "context_window", None),
+    )
+
+
+# ── Session lifecycle ──────────────────────────────────────────────────────
+
+@bp.post("/api/session/new")
+def new_session():
+    sess = session_manager.create()
+    return jsonify({"session_id": sess.session_id})
+
+
+@bp.post("/api/session/<sid>/clear")
+def clear_history(sid: str):
+    session_manager.get_or_create(sid).clear_history()
+    return jsonify({"ok": True})
+
+
+# ── Chart serving ──────────────────────────────────────────────────────────
+
+@bp.get("/api/chart/<chart_id>")
+def serve_chart(chart_id: str):
+    html = chart_store.get(chart_id)
+    if not html:
+        return "Chart not found", 404
+    return Response(html, mimetype="text/html")
+
+
+# ── Stop ───────────────────────────────────────────────────────────────────
+
+@bp.post("/api/session/<sid>/stop")
+def stop_session(sid: str):
+    """
+    Signal the running agent loop to stop after the current tool call finishes.
+    The SSE generator checks cancel_requested before each yielded event and
+    terminates gracefully, always sending 'stopped' then 'done'.
+    """
+    sess = session_manager.get(sid)
+    if sess:
+        sess.cancel_requested = True
+    return jsonify({"ok": True})
+
+
+# ── Chat SSE ───────────────────────────────────────────────────────────────
+
+@bp.post("/api/session/<sid>/chat")
+def chat_stream(sid: str):
+    d = request.json or {}
+    message = (d.get("message") or "").strip()
+    command = (d.get("command") or "").strip()
+    if not message:
+        return jsonify({"error": "消息不能为空"}), 400
+
+    sess = session_manager.get_or_create(sid)
+    # Reset any previous stop signal when a new chat begins
+    sess.cancel_requested = False
+
+    def _sse(obj) -> str:
+        return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+    def generate():
+        # ── Build agent ────────────────────────────────────────────────────
+        try:
+            agent = _build_agent(sess)
+        except ValueError as exc:
+            yield _sse({"type": "error", "message": str(exc)})
+            yield _sse({"type": "done"})
+            return
+
+        collected: list[str] = []
+        collected_reasoning: list[str] = []
+        turn_chart_ids: list[str] = []   # charts produced during this turn
+        completed_normally = False
+
+        # ── Agent loop ─────────────────────────────────────────────────────
+        ppt_title      = d.get("ppt_title", "")
+        ppt_slides     = d.get("ppt_slides") or []
+        excel_tables   = d.get("excel_tables") or []
+        excel_filename = d.get("excel_filename", "")
+        report_title   = d.get("report_title", "")
+        report_sections = d.get("report_sections") or []
+        dashboard_name    = d.get("dashboard_name", "")
+        dashboard_widgets = d.get("dashboard_widgets") or []
+
+        try:
+            for event in agent.run(
+                message, list(sess.history), command=command,
+                last_reasoning=getattr(sess, "last_reasoning", ""),
+                last_prompt_tokens=getattr(sess, "last_prompt_tokens", 0),
+                ppt_title=ppt_title, ppt_slides=ppt_slides,
+                excel_tables=excel_tables, excel_filename=excel_filename,
+                report_title=report_title, report_sections=report_sections,
+                dashboard_name=dashboard_name, dashboard_widgets=dashboard_widgets,
+            ):
+
+                # Check stop flag between every yielded event ────────────
+                if sess.cancel_requested:
+                    sess.cancel_requested = False
+                    yield _sse({"type": "stopped"})
+                    return   # finally sends 'done'
+
+                etype = event.get("type")
+
+                if etype == "chart_html":
+                    cid = uuid.uuid4().hex
+                    chart_store[cid] = event["html"]
+                    if not hasattr(sess, "chart_ids"):
+                        sess.chart_ids = []
+                    sess.chart_ids.append(cid)   # persist for export
+                    turn_chart_ids.append(cid)   # attach to this turn's message
+                    yield _sse({"type": "chart_ref", "chart_id": cid})
+                elif etype == "chart_placeholder":
+                    pass   # internal signal, not forwarded
+                elif etype == "ppt_scheme":
+                    sess.ppt_color_scheme = event.get("scheme", "mckinsey")
+                    # Not forwarded to frontend — purely a session state update
+                elif etype == "usage":
+                    sess.record_usage(
+                        event.get("prompt_tokens", 0),
+                        event.get("completion_tokens", 0),
+                    )
+                    cfg = config_manager.get_config(sess.model_provider)
+                    # The agent already puts context_window on the usage event
+                    # (= its _get_context_window(), which itself prefers the
+                    # configured value). Keep it — only fall back to cfg when
+                    # the agent did not provide one.
+                    enriched = {
+                        **event,
+                        "max_output_tokens": cfg.max_output_tokens if cfg else None,
+                        "session_total_input": sess.total_input_tokens,
+                        "session_total_output": sess.total_output_tokens,
+                    }
+                    if not enriched.get("context_window"):
+                        enriched["context_window"] = (
+                            cfg.context_window if cfg else None
+                        )
+                    yield _sse(enriched)
+                else:
+                    yield _sse(event)
+
+                if etype == "text":
+                    collected.append(event.get("content", ""))
+                elif etype == "reasoning":
+                    collected_reasoning.append(event.get("content", ""))
+
+            # Loop finished normally — save history
+            completed_normally = True
+            sess.add_user(message)
+            sess.add_assistant(
+                "".join(collected),
+                reasoning="".join(collected_reasoning),
+                chart_ids=turn_chart_ids,
+            )
+
+        except Exception as exc:
+            # Catch any unhandled exception from the agent so the frontend
+            # is never left hanging without a 'done' event.
+            log.exception("[chat] unhandled agent error")
+            yield _sse({"type": "error", "message": f"内部错误：{exc}"})
+
+        finally:
+            # Always send 'done' — covers normal exit, stop, and exceptions.
+            yield _sse({"type": "done"})
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
