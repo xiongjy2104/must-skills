@@ -40,4 +40,9 @@ def create_app() -> Flask:
     def index():
         return render_template("agent_chat.html")
 
+    @app.get("/healthz")
+    def healthz():
+        # Lightweight liveness probe for container orchestration / load balancers.
+        return {"status": "ok"}, 200
+
     return app

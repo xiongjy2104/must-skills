@@ -14,9 +14,16 @@ from dataclasses import dataclass, asdict
 
 log = logging.getLogger(__name__)
 
-CONFIG_DIR = Path("/tmp/LLM") if os.environ.get("VERCEL") else Path(__file__).parent
-if os.environ.get("VERCEL"):
+# Config dir precedence: explicit LLM_CONFIG_DIR (e.g. a mounted volume in
+# Docker) → Vercel's /tmp → in-tree default (local `python app.py`).
+if os.environ.get("LLM_CONFIG_DIR"):
+    CONFIG_DIR = Path(os.environ["LLM_CONFIG_DIR"])
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+elif os.environ.get("VERCEL"):
+    CONFIG_DIR = Path("/tmp/LLM")
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+else:
+    CONFIG_DIR = Path(__file__).parent
 
 LLM_CONFIG_FILE = CONFIG_DIR / "llm_config.json"
 

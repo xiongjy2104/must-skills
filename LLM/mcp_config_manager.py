@@ -9,7 +9,11 @@ from dataclasses import dataclass, field, asdict
 
 log = logging.getLogger(__name__)
 
-if os.environ.get("VERCEL"):
+# Shares LLM_CONFIG_DIR with llm_config.json so both persist to one volume.
+if os.environ.get("LLM_CONFIG_DIR"):
+    CONFIG_DIR = Path(os.environ["LLM_CONFIG_DIR"])
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+elif os.environ.get("VERCEL"):
     CONFIG_DIR = Path("/tmp/LLM")
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 else:

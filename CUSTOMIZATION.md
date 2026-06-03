@@ -38,9 +38,28 @@ E（部署）待办。
 
 `static/js/i18n.js` 已为以上全部新功能补齐 zh / en 词条，沿用原有语言切换。
 
-## 待办 / TODO（E：部署）
+## E. 阿里云容器化部署
 
-阿里云容器化（Dockerfile + compose、卷挂载持久化 `LLM/` 配置与 `outputs/`、密钥走环境变量）尚未实现。
+- `Dockerfile`：`python:3.11-slim` + gunicorn。**单 worker + gthread 多线程**
+  （会话级 DuckDB 表、MCP 后台事件循环都在进程内，不能多 worker），`--timeout 600`
+  适配 SSE 长流式分析。
+- `docker-compose.yml`：三个命名卷持久化——`agent_persist`（模型账号 / MCP / 数据源配置）、
+  `agent_outputs`（图表 / 导出 / 会话 / 日志）、`agent_uploads`（上传文件 + 知识库），
+  `/healthz` 健康检查，密钥经 `.env`（`env_file`）注入。
+- 配置目录可被环境变量覆盖，避免挂卷覆盖代码：`LLM_CONFIG_DIR`（含 llm_config.json
+  与 mcp_config.json）、`DATASOURCE_CONFIG_DIR`。本地 `python app.py` 行为不变。
+- 新增 `/healthz` 轻量探活端点（`api/__init__.py`）。
+- 已从 git 移除 `LLM/llm_config.json` 并加入 `.gitignore`，密钥不再入库。
+
+**部署步骤（阿里云 ECS / 容器服务）：**
+```bash
+cp .env.example .env      # 按需填写端口/可选 env
+docker compose up -d --build
+# 访问 http://<服务器IP>:5001 ，在 UI 里填模型账号 / 数据源 / MCP（持久化到卷）
+```
+> 沙箱无 Docker 守护进程，未能实跑构建；`docker compose config` 已校验通过。
+> `requirements.txt` 含 `selenium`/`snapshot-selenium`（pyecharts 出图用），镜像未装
+> 无头浏览器；如需该路径出图，请在镜像里加 Chromium。
 
 ## 注意
 

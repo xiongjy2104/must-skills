@@ -4,7 +4,10 @@ import os
 from pathlib import Path
 from typing import Optional
 
-if os.environ.get("VERCEL"):
+if os.environ.get("DATASOURCE_CONFIG_DIR"):
+    _CONFIG_DIR = Path(os.environ["DATASOURCE_CONFIG_DIR"])
+    _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+elif os.environ.get("VERCEL"):
     _CONFIG_DIR = Path("/tmp/data")
 else:
     _CONFIG_DIR = Path(__file__).parent

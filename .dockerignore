@@ -1,0 +1,16 @@
+.git
+.gitignore
+**/__pycache__/
+*.pyc
+.venv
+venv
+outputs/
+uploads/
+persist/
+.docker-persist/
+Images/
+*.md
+!requirements.txt
+.env
+.env.*
+!.env.example
