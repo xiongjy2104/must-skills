@@ -72,6 +72,15 @@ class LLMConfigManager:
             "context_window": 200000,
             "max_output_tokens": 64000,
         },
+        "gemini": {
+            # Google Gemini OpenAI-compatible endpoint.
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "model": "gemini-2.0-flash",
+            "env_var": "GEMINI_API_KEY",
+            "is_custom": False,
+            "context_window": 1048576,
+            "max_output_tokens": 8192,
+        },
     }
 
     def __init__(self, load_from_env: bool = False):
@@ -422,7 +431,7 @@ class LLMConfigManager:
 
     def get_default_provider(self) -> Optional[str]:
         """返回默认使用的账号 config_id（按 provider 优先级解析到活跃账号）。"""
-        priority = ["deepseek", "openai", "claude"]
+        priority = ["deepseek", "openai", "claude", "gemini"]
         for provider in priority:
             cid = self.resolve(provider)
             if cid and self.configs[cid].enabled:
@@ -524,7 +533,7 @@ def get_llm_client_with_fallback(preferred_provider: Optional[str] = None):
     if preferred_provider:
         _add(manager.resolve(preferred_provider))
 
-    for p in ["deepseek", "openai", "claude"]:
+    for p in ["deepseek", "openai", "claude", "gemini"]:
         _add(manager.resolve(p))
 
     # Append any other enabled account (covers extra accounts + custom models)

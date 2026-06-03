@@ -8,6 +8,7 @@
     deepseek: { label: "DeepSeek",         icon: COMMON_ICON },
     openai:   { label: "OpenAI / ChatGPT", icon: COMMON_ICON },
     claude:   { label: "Anthropic Claude", icon: COMMON_ICON },
+    gemini:   { label: "Google Gemini",    icon: COMMON_ICON },
   };
 
   // 首次加载标志 — loadModels 第一次运行时为 true，此后为 false。
