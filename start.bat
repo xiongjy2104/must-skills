@@ -137,26 +137,25 @@ if not exist "%APP_FILE%" (
 rem =========================================================
 rem  Check port
 rem =========================================================
+rem 自动结束占用端口的旧进程（通常是上次 reloader 残留的子进程），
+rem 这样保留 Flask reloader 的同时也能反复干净重启。
 set "PORT_PID="
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr /r /c:":%PORT% .*LISTENING"') do set "PORT_PID=%%a"
 
 if defined PORT_PID (
-    echo [WARN] Port %PORT% is already in use by PID=%PORT_PID%.
-    echo [INFO] This is usually a leftover server from a previous run.
-    choice /c YN /m "Terminate that process and continue"
-    if errorlevel 2 (
-        echo [ERROR] Aborted. Port %PORT% is busy.
-        pause
-        exit /b 1
-    )
-    taskkill /pid %PORT_PID% /f >nul 2>&1
-    if errorlevel 1 (
-        echo [ERROR] Failed to terminate PID=%PORT_PID%. Try closing it manually.
-        pause
-        exit /b 1
-    )
-    echo [INFO] Terminated PID=%PORT_PID%. Waiting for the port to free up...
+    echo [INFO] Port %PORT% in use by PID=%PORT_PID% ^(leftover server^). Terminating...
+    taskkill /pid %PORT_PID% /t /f >nul 2>&1
     timeout /t 2 >nul
+
+    rem 复检：确认端口确实已释放
+    set "PORT_PID2="
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr /r /c:":%PORT% .*LISTENING"') do set "PORT_PID2=%%a"
+    if defined PORT_PID2 (
+        echo [ERROR] Port %PORT% still in use by PID=!PORT_PID2!. Close it manually.
+        pause
+        exit /b 1
+    )
+    echo [INFO] Port %PORT% freed.
 )
 
 rem =========================================================
