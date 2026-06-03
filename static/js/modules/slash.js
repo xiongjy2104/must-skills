@@ -26,6 +26,7 @@
     // Export
     { cmd: "export",     icon: "📥",  descKey: "cmd.export.desc",     groupKey: "group.export",   available: true },
     { cmd: "report",     icon: "📄",  descKey: "cmd.report.desc",     groupKey: "group.export",   available: true },
+    { cmd: "larkdoc",    icon: "📋",  descKey: "cmd.larkdoc.desc",    groupKey: "group.export",   available: true },
     { cmd: "ppt",        icon: "🎯",  descKey: "cmd.ppt.desc",        groupKey: "group.export",   available: true },
     { cmd: "dashboard",  icon: "📊",  descKey: "cmd.dashboard.desc",  groupKey: "group.export",   available: true },
     // Tools

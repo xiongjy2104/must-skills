@@ -382,6 +382,47 @@ AGENT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "export_lark_doc",
+            "description": (
+                "Export an analysis report into a Lark (Feishu) online document via "
+                "the Lark MCP server. Call this ONLY when the user explicitly asked "
+                "to export to Lark Doc (e.g. the /larkdoc command). Query the data "
+                "first, then compose sections, same structure as export_report."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Document title."},
+                    "sections": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "heading": {"type": "string"},
+                                "content": {
+                                    "type": "string",
+                                    "description": "Section body text (plain text or markdown-style).",
+                                },
+                            },
+                            "required": ["heading", "content"],
+                        },
+                        "description": "Ordered list of document sections.",
+                    },
+                    "server_id": {
+                        "type": "string",
+                        "description": (
+                            "Lark MCP server id. Leave empty to auto-detect a "
+                            "connected server whose id looks like Lark/Feishu."
+                        ),
+                    },
+                },
+                "required": ["title", "sections"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "propose_excel_export",
             "description": (
                 "Show the user a preview of which tables will be exported BEFORE generating the Excel file.\n"

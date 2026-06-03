@@ -554,6 +554,7 @@ class BusinessAgent(DataToolsMixin, ExportToolsMixin):
                     "generate_ppt":              {"ppt_confirm"},
                     "propose_report_outline":    {"report", "report_revise"},
                     "export_report":             {"report_confirm"},
+                    "export_lark_doc":           {"larkdoc"},
                     "propose_excel_export":      {"export", "excel_revise"},
                     "export_excel":              {"excel_confirm"},
                     "propose_dashboard_outline": {"dashboard", "dashboard_revise"},
@@ -619,6 +620,7 @@ class BusinessAgent(DataToolsMixin, ExportToolsMixin):
                         "clean_data":            f"数据清洗 [{args.get('operation', '?')}]: {args.get('table_name', '自动检测')}",
                         "export_excel":          f"导出 Excel → {', '.join(args.get('tables', []))}",
                         "export_report":         f"生成 Word 报告: {args.get('title', '?')}",
+                        "export_lark_doc":       f"导出到 Lark 文档: {args.get('title', '?')}",
                         "propose_excel_export":  f"预览 Excel 导出：{', '.join(args.get('tables', ['*']))}",
                         "propose_report_outline": f"生成报告大纲：{args.get('title', '?')}（{len(args.get('sections', []))} 章节）",
                         "propose_ppt_outline":   f"生成 PPT 大纲：{args.get('title', '?')} ({len(args.get('slides', []))} 张)",
@@ -721,6 +723,12 @@ class BusinessAgent(DataToolsMixin, ExportToolsMixin):
                             tool_result = self._tool_export_report(
                                 title=args.get("title", "分析报告"),
                                 sections=args.get("sections", []),
+                            )
+                        elif name == "export_lark_doc":
+                            tool_result = self._tool_export_lark_doc(
+                                title=args.get("title", "分析报告"),
+                                sections=args.get("sections", []),
+                                server_id=args.get("server_id", ""),
                             )
                         elif name == "propose_excel_export":
                             result = self._tool_propose_excel_export(

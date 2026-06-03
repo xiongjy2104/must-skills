@@ -117,9 +117,10 @@ field_mapping rules — CRITICAL:
 
 9. OUTPUT TOOLS — SLASH COMMANDS ONLY (STRICT):
    propose_ppt_outline, generate_ppt, propose_report_outline, export_report,
-   propose_excel_export, export_excel, propose_dashboard_outline, generate_dashboard
+   export_lark_doc, propose_excel_export, export_excel,
+   propose_dashboard_outline, generate_dashboard
    → These tools MUST NOT be called unless the user explicitly issued a slash command
-     (/ppt, /report, /export, /dashboard) in the CURRENT turn or an active confirm flow.
+     (/ppt, /report, /larkdoc, /export, /dashboard) in the CURRENT turn or an active confirm flow.
    → NEVER call them proactively, speculatively, or as a "helpful suggestion" after analysis.
    → If the user asks "can you make a PPT?" in plain chat, reply with text suggesting they
      use /ppt — do NOT call any of these tools.
@@ -437,6 +438,18 @@ COMMAND_HINTS: Dict[str, str] = {
         "Current title/sections are embedded as [CURRENT_REPORT_JSON] in the user message. "
         "Apply the requested changes and call propose_report_outline with the updated params. "
         "Output NOTHING after the tool call."
+    ),
+    "larkdoc": (
+        "The user issued the /larkdoc command to export an analysis report into a "
+        "Lark (Feishu) online document via the Lark MCP server.\n\n"
+        "Step 1 — If the user asked for charts, generate them with generate_chart from "
+        "data already in the conversation (or 1-2 targeted queries).\n"
+        "Step 2 — Compose the document from the conversation history:\n"
+        "  title: a concise, descriptive title\n"
+        "  sections: Executive Summary → Key Findings → Detailed Analysis → Recommendations\n"
+        "  Each section has heading + content (plain text summary). Do NOT re-query data.\n"
+        "Step 3 — Call export_lark_doc(title=..., sections=[...]). Leave server_id empty to "
+        "auto-detect the connected Lark MCP server. Output NOTHING after the tool call."
     ),
     "ppt": (
         "The user issued /ppt. Goal: call propose_ppt_outline — NEVER generate_ppt this turn.\n\n"

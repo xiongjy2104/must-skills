@@ -95,6 +95,29 @@ class ExportToolsMixin:
             f"[📥 点击下载 {download_name}](/api/export/{download_name})"
         )
 
+    def _tool_export_lark_doc(self, title: str, sections: list, server_id: str = "") -> str:
+        """Export the report into a Lark online document via the Lark MCP server."""
+        from Function.Output.lark_doc_export import export_to_lark_doc
+
+        if not sections:
+            return "❌ 报告内容为空，请提供至少一个章节。"
+
+        # Chart titles referenced in the doc (native image embed depends on the
+        # Lark MCP server's media-upload support — see lark_doc_export docstring).
+        chart_titles = []
+        for cid in self._session_chart_ids:
+            if cid in self._chart_store:
+                chart_titles.append(cid)
+
+        try:
+            ok, message = export_to_lark_doc(
+                self._mcp_manager, title, sections,
+                server_id=server_id, chart_titles=chart_titles,
+            )
+        except Exception as exc:
+            return f"❌ Lark 文档生成失败：{exc}"
+        return message
+
     def _tool_propose_report_outline(self, title: str, sections: list) -> dict:
         rows = ["| # | 章节标题 |\n|---|---------|"]
         for i, sec in enumerate(sections, 1):
