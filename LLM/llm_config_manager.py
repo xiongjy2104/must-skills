@@ -81,6 +81,17 @@ class LLMConfigManager:
             "context_window": 1048576,
             "max_output_tokens": 8192,
         },
+        "claude_cli": {
+            # Local Claude Code CLI (uses claude.ai subscription / OAuth token).
+            # No API key required — auth is handled by the CLI itself.
+            "base_url": None,
+            "model": "claude",          # informational; CLI picks its own model
+            "env_var": "CLAUDE_CODE_OAUTH_TOKEN",
+            "is_custom": False,
+            "context_window": 200000,
+            "max_output_tokens": 64000,
+            "no_api_key": True,         # api_key field is optional for this provider
+        },
     }
 
     def __init__(self, load_from_env: bool = False):
@@ -157,9 +168,10 @@ class LLMConfigManager:
         """为某个 provider 新增一个账号（如同一家的企业版 / Pro 版）。"""
         if not provider or not provider.strip():
             return False, "provider 不能为空"
-        if not api_key or not api_key.strip():
-            return False, "API Key 不能为空"
         provider = provider.strip()
+        no_api_key = self.DEFAULT_CONFIGS.get(provider, {}).get("no_api_key", False)
+        if not no_api_key and (not api_key or not api_key.strip()):
+            return False, "API Key 不能为空"
 
         # 若该 provider 还没有任何账号，首个账号沿用 id==provider（兼容旧逻辑）。
         if not self._accounts_of(provider):
@@ -320,7 +332,8 @@ class LLMConfigManager:
             log.warning("不支持的提供商: %s", provider)
             return False
 
-        if not api_key or not api_key.strip():
+        no_api_key = self.DEFAULT_CONFIGS[provider].get("no_api_key", False)
+        if not no_api_key and (not api_key or not api_key.strip()):
             log.warning("API Key 不能为空")
             return False
 
@@ -503,6 +516,11 @@ def get_llm_client(provider: Optional[str] = None):
     config = manager.get_config(provider)
     if not config:
         raise ValueError(f"未找到 {provider} 的配置")
+
+    # CLI provider: return subprocess-based client instead of OpenAI SDK client
+    if config.provider == "claude_cli":
+        from agent.cli_client import ClaudeCliClient
+        return ClaudeCliClient(cli_path="claude")
 
     from openai import OpenAI
     return OpenAI(api_key=config.api_key, base_url=config.base_url)

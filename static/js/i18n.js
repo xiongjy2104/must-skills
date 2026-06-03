@@ -138,6 +138,7 @@
       // ── Settings fields ──────────────────────────────────────────
       'settings.api_key': 'API Key',
       'settings.api_key_ph': 'sk-… 或留空清除',
+      'settings.claude_cli_key_ph': '可选：CLAUDE_CODE_OAUTH_TOKEN（留空则用本机登录状态）',
       'settings.base_url': 'Base URL',
       'settings.model': 'Model',
       'settings.ctx_window': '上下文窗口',
@@ -411,6 +412,7 @@
       // ── Settings fields ──────────────────────────────────────────
       'settings.api_key': 'API Key',
       'settings.api_key_ph': 'sk-… or leave blank to clear',
+      'settings.claude_cli_key_ph': 'Optional: CLAUDE_CODE_OAUTH_TOKEN (leave blank to use local login)',
       'settings.base_url': 'Base URL',
       'settings.model': 'Model',
       'settings.ctx_window': 'Context Window',

@@ -9,6 +9,7 @@
     openai:   { label: "OpenAI / ChatGPT", icon: COMMON_ICON },
     claude:   { label: "Anthropic Claude", icon: COMMON_ICON },
     gemini:   { label: "Google Gemini",    icon: COMMON_ICON },
+    claude_cli: { label: "Claude Code CLI (订阅)", icon: COMMON_ICON },
   };
 
   // 首次加载标志 — loadModels 第一次运行时为 true，此后为 false。
@@ -198,7 +199,8 @@
           <div class="provider-fields">
             <div class="pf-row">
               <label>${t('settings.api_key')}</label>
-              <input type="password" id="pk-${key}" placeholder="${t('settings.api_key_ph')}">
+              <input type="password" id="pk-${key}"
+                placeholder="${key === 'claude_cli' ? t('settings.claude_cli_key_ph') : t('settings.api_key_ph')}">
             </div>
             <div class="pf-row">
               <label>${t('settings.base_url')}</label>
