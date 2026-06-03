@@ -11,7 +11,11 @@ from flask import Blueprint, request, jsonify
 from werkzeug.utils import secure_filename
 
 from .state import session_manager, datasource_config_manager
-from data.connector import ExcelDataSource, CSVDataSource, SQLDataSource, GoogleSheetsDataSource, HTTPAPIDataSource
+from data.connector import (
+    ExcelDataSource, CSVDataSource, SQLDataSource, GoogleSheetsDataSource,
+    HTTPAPIDataSource, MaxComputeDataSource, SelectDBDataSource,
+    OSSDataSource, LarkSheetsDataSource,
+)
 
 log = logging.getLogger(__name__)
 
@@ -277,4 +281,137 @@ def list_datasource_configs():
 def delete_datasource_config(ds_type: str):
     datasource_config_manager.delete(ds_type)
     return jsonify({"ok": True})
+
+
+# ── Alibaba Cloud / Lark custom data sources ──────────────────────────────────
+
+@bp.post("/api/session/<sid>/connect-maxcompute")
+def connect_maxcompute(sid: str):
+    """Connect a MaxCompute project (the engine behind Alibaba DataWorks)."""
+    d = request.json or {}
+    saved = datasource_config_manager.get("maxcompute") or {}
+    access_id    = (d.get("access_id") or "").strip()    or saved.get("access_id", "")
+    access_key   = (d.get("access_key") or "").strip()   or saved.get("access_key", "")
+    project      = (d.get("project") or "").strip()      or saved.get("project", "")
+    endpoint     = (d.get("endpoint") or "").strip()     or saved.get("endpoint", "")
+    display_name = (d.get("name") or "").strip()
+
+    missing = [k for k, v in {
+        "AccessKey ID": access_id, "AccessKey Secret": access_key,
+        "项目名": project, "Endpoint": endpoint,
+    }.items() if not v]
+    if missing:
+        return jsonify({"error": f"以下字段不能为空：{', '.join(missing)}"}), 400
+
+    try:
+        source = MaxComputeDataSource(access_id, access_key, project, endpoint, display_name)
+        sess = session_manager.get_or_create(sid)
+        sess.data_source = source
+        datasource_config_manager.save("maxcompute", {
+            "access_id": access_id, "access_key": access_key,
+            "project": project, "endpoint": endpoint, "name": display_name,
+        })
+        return jsonify({"ok": True, "source_name": source.name,
+                        "schema_preview": source.get_schema()})
+    except Exception as exc:
+        log.error("[connect-maxcompute] FAILED: %s\n%s", exc, traceback.format_exc())
+        return jsonify({"error": _friendly_conn_error(exc, "MaxCompute / DataWorks")}), 400
+
+
+@bp.post("/api/session/<sid>/connect-selectdb")
+def connect_selectdb(sid: str):
+    """Connect a SelectDB Cloud warehouse over the MySQL protocol."""
+    d = request.json or {}
+    saved = datasource_config_manager.get("selectdb") or {}
+    host         = (d.get("host") or "").strip()     or saved.get("host", "")
+    port         = d.get("port") or saved.get("port") or 9030
+    user         = (d.get("user") or "").strip()     or saved.get("user", "")
+    password     = (d.get("password") or "").strip() or saved.get("password", "")
+    database     = (d.get("database") or "").strip() or saved.get("database", "")
+    display_name = (d.get("name") or "").strip()
+
+    if not host or not user or not database:
+        return jsonify({"error": "host / user / database 不能为空"}), 400
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        port = 9030
+
+    try:
+        source = SelectDBDataSource(host, user, password, database, port, display_name)
+        sess = session_manager.get_or_create(sid)
+        sess.data_source = source
+        datasource_config_manager.save("selectdb", {
+            "host": host, "port": port, "user": user,
+            "password": password, "database": database, "name": display_name,
+        })
+        return jsonify({"ok": True, "source_name": source.name,
+                        "schema_preview": source.get_schema()})
+    except Exception as exc:
+        log.error("[connect-selectdb] FAILED: %s\n%s", exc, traceback.format_exc())
+        return jsonify({"error": _friendly_conn_error(exc, "SelectDB")}), 400
+
+
+@bp.post("/api/session/<sid>/connect-oss")
+def connect_oss(sid: str):
+    """Load an Excel/CSV object stored in an Alibaba Cloud OSS bucket."""
+    d = request.json or {}
+    saved = datasource_config_manager.get("oss") or {}
+    endpoint     = (d.get("endpoint") or "").strip()          or saved.get("endpoint", "")
+    bucket       = (d.get("bucket") or "").strip()            or saved.get("bucket", "")
+    object_key   = (d.get("object_key") or "").strip()        or saved.get("object_key", "")
+    access_id    = (d.get("access_key_id") or "").strip()     or saved.get("access_key_id", "")
+    access_secret= (d.get("access_key_secret") or "").strip() or saved.get("access_key_secret", "")
+    display_name = (d.get("name") or "").strip()
+
+    if not all([endpoint, bucket, object_key, access_id, access_secret]):
+        return jsonify({"error": "endpoint / bucket / object_key / AccessKey 不能为空"}), 400
+
+    try:
+        source = OSSDataSource(endpoint, bucket, object_key, access_id, access_secret, display_name)
+        sess = session_manager.get_or_create(sid)
+        sess.data_source = source
+        datasource_config_manager.save("oss", {
+            "endpoint": endpoint, "bucket": bucket, "object_key": object_key,
+            "access_key_id": access_id, "access_key_secret": access_secret,
+            "name": display_name,
+        })
+        return jsonify({"ok": True, "source_name": source.name,
+                        "schema_preview": source.get_schema()})
+    except Exception as exc:
+        log.error("[connect-oss] FAILED: %s\n%s", exc, traceback.format_exc())
+        return jsonify({"error": _friendly_conn_error(exc, "OSS")}), 400
+
+
+@bp.post("/api/session/<sid>/connect-lark")
+def connect_lark(sid: str):
+    """Load a Lark online spreadsheet through the Lark MCP server."""
+    d = request.json or {}
+    saved = datasource_config_manager.get("lark") or {}
+    server_id    = (d.get("server_id") or "").strip()         or saved.get("server_id", "")
+    token        = (d.get("spreadsheet_token") or "").strip() or saved.get("spreadsheet_token", "")
+    read_tool    = (d.get("read_tool") or "").strip()         or saved.get("read_tool", "")
+    display_name = (d.get("name") or "").strip()
+    ranges_raw   = d.get("ranges") or saved.get("ranges") or []
+    if isinstance(ranges_raw, str):
+        ranges = [r.strip() for r in ranges_raw.split(",") if r.strip()]
+    else:
+        ranges = [str(r).strip() for r in ranges_raw if str(r).strip()]
+
+    if not server_id or not token:
+        return jsonify({"error": "Lark MCP 服务器 ID 和电子表格 token 不能为空"}), 400
+
+    try:
+        source = LarkSheetsDataSource(server_id, token, ranges, read_tool, display_name)
+        sess = session_manager.get_or_create(sid)
+        sess.data_source = source
+        datasource_config_manager.save("lark", {
+            "server_id": server_id, "spreadsheet_token": token,
+            "read_tool": read_tool, "ranges": ranges, "name": display_name,
+        })
+        return jsonify({"ok": True, "source_name": source.name,
+                        "schema_preview": source.get_schema()})
+    except Exception as exc:
+        log.error("[connect-lark] FAILED: %s\n%s", exc, traceback.format_exc())
+        return jsonify({"error": _friendly_conn_error(exc, "Lark 在线表格")}), 400
 

@@ -17,6 +17,10 @@ from data.sources import (
     SQLDataSource,
     GoogleSheetsDataSource,
     HTTPAPIDataSource,
+    MaxComputeDataSource,
+    SelectDBDataSource,
+    OSSDataSource,
+    LarkSheetsDataSource,
 )
 
 __all__ = [
@@ -27,4 +31,8 @@ __all__ = [
     "SQLDataSource",
     "GoogleSheetsDataSource",
     "HTTPAPIDataSource",
+    "MaxComputeDataSource",
+    "SelectDBDataSource",
+    "OSSDataSource",
+    "LarkSheetsDataSource",
 ]

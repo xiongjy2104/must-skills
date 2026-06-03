@@ -15,6 +15,11 @@ _SENSITIVE_KEYS = {
     "sql": "connection_string",
     "gsheets": "creds_json",
     "api": "auth_value",
+    "maxcompute": "access_key",
+    "selectdb": "password",
+    "oss": "access_key_secret",
+    # Lark goes through MCP auth — the stored token is a doc reference, not a
+    # standalone secret, so it is not masked here.
 }
 
 

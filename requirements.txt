@@ -55,3 +55,10 @@ psycopg2-binary>=2.9  # PostgreSQL driver
 # External data sources
 gspread>=6.0.0
 google-auth>=2.0.0
+
+# Alibaba Cloud data sources (custom build)
+pyodps>=0.11.0       # MaxCompute (DataWorks backend) SDK
+oss2>=2.18.0         # Alibaba Cloud OSS object storage
+# SelectDB Cloud speaks the MySQL protocol — reuses pymysql (declared above).
+# Lark online sheets + Lark Docs export go through the Lark MCP server,
+# so they need no extra Python dependency here.
