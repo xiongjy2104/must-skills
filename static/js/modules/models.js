@@ -22,11 +22,19 @@
     const sel = $("model-sel");
     const prevValue = sel.value;   // 刷新前用户选中的值
     sel.innerHTML = `<option value="">${t('sidebar.model_placeholder')}</option>`;
+    // Count accounts per provider so we only show the account label when a
+    // provider actually has more than one (e.g. Claude 企业版 / Pro 版).
+    const perProvider = {};
+    for (const cfg of Object.values(models)) {
+      if (cfg.has_api_key) perProvider[cfg.provider] = (perProvider[cfg.provider] || 0) + 1;
+    }
     for (const [key, cfg] of Object.entries(models)) {
       if (!cfg.has_api_key) continue;
       const opt = document.createElement("option");
       opt.value = key;
-      opt.textContent = cfg.model || key;
+      const multi = (perProvider[cfg.provider] || 0) > 1;
+      opt.textContent = (cfg.model || key)
+        + (multi && cfg.label ? ` · ${cfg.label}` : "");
       sel.appendChild(opt);
     }
 
@@ -156,6 +164,20 @@
     renderCustomList(configs);
   }
 
+  function _accountsStrip(provider, configs) {
+    // List every account belonging to `provider` with switch / delete controls.
+    const accts = Object.entries(configs).filter(([, v]) => v.provider === provider && v.has_api_key);
+    if (accts.length <= 1) return "";   // single account → no strip needed
+    const rows = accts.map(([cid, c]) => `
+      <div class="acct-row ${c.is_active ? "active" : ""}">
+        <span class="acct-label">${c.label || cid}${c.is_active ? ` · ${t('settings.acct_active')}` : ""}</span>
+        <span class="acct-model">${c.model || ""}</span>
+        ${c.is_active ? "" : `<button class="btn-sm btn-sm-ghost" data-action="setActiveAccount:${provider}|${cid}">${t('settings.acct_use')}</button>`}
+        <button class="btn-sm btn-sm-danger" data-action="deleteAccount:${cid}">${t('settings.del_custom')}</button>
+      </div>`).join("");
+    return `<div class="acct-strip"><div class="acct-strip-title">${t('settings.accounts')}</div>${rows}</div>`;
+  }
+
   function renderBuiltinProviders(configs, defaults) {
     const container = $("builtin-providers");
     container.innerHTML = "";
@@ -205,10 +227,16 @@
               <label>${t('settings.budget') || '思考预算（tokens）'}</label>
               <input type="number" id="pbudget-${key}" value="${cfg.thinking_budget ?? 8000}" min="1000" max="100000" step="1000">
             </div>
+            <div class="pf-row">
+              <label>${t('settings.acct_label')}</label>
+              <input type="text" id="plabel-${key}" placeholder="${t('settings.acct_label_ph')}">
+            </div>
           </div>
+          ${_accountsStrip(key, configs)}
           <div class="provider-actions">
             <button class="btn-sm btn-sm-danger"  data-action="clearBuiltin:${key}">${t('settings.clear')}</button>
             <button class="btn-sm btn-sm-ghost"   data-action="testProvider:${key}">${t('settings.test') || '测试'}</button>
+            <button class="btn-sm btn-sm-ghost"   data-action="addAccount:${key}">${t('settings.add_account')}</button>
             <button class="btn-sm btn-sm-primary" data-action="saveBuiltin:${key}">${t('settings.save')}</button>
           </div>
           <div class="provider-msg" id="pmsg-${key}"></div>
@@ -394,9 +422,77 @@
     if (cb && row) row.style.display = cb.checked ? "flex" : "none";
   }
 
+  // ── Multi-account management ─────────────────────────────────────────
+  // Add the values currently typed in a provider card as a NEW account
+  // (e.g. add the Pro-version key alongside the Enterprise one for Claude).
+  async function addAccount(key) {
+    const apiKey = $(`pk-${key}`).value.trim();
+    const label  = $(`plabel-${key}`).value.trim();
+    const msgEl  = $(`pmsg-${key}`);
+    if (!apiKey) {
+      msgEl.className = "provider-msg err";
+      msgEl.textContent = t('settings.api_key_empty');
+      return;
+    }
+    if (!label) {
+      msgEl.className = "provider-msg err";
+      msgEl.textContent = t('settings.acct_label_required');
+      return;
+    }
+    const ctxRaw = $(`pctx-${key}`).value.trim();
+    const outRaw = $(`pout-${key}`).value.trim();
+    const budgetRaw = $(`pbudget-${key}`)?.value.trim();
+    const body = {
+      provider: key, label, api_key: apiKey,
+      base_url: $(`pu-${key}`).value.trim(),
+      model:    $(`pm-${key}`).value.trim(),
+      enable_thinking: $(`pthink-${key}`).checked,
+      thinking_budget: budgetRaw ? parseInt(budgetRaw) : 8000,
+      make_active: true,
+    };
+    if (ctxRaw) body.context_window    = parseInt(ctxRaw);
+    if (outRaw) body.max_output_tokens = parseInt(outRaw);
+    msgEl.textContent = t('settings.saving');
+    const r = await fetch("/api/models/accounts/add", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error) {
+      msgEl.className = "provider-msg err"; msgEl.textContent = d.error;
+    } else {
+      msgEl.className = "provider-msg ok"; msgEl.textContent = d.message || t('settings.save_ok');
+      $(`pk-${key}`).value = ""; $(`plabel-${key}`).value = "";
+      await Promise.all([loadModels(), loadBuiltinProviders()]);
+    }
+  }
+
+  async function setActiveAccount(arg) {
+    const [provider, configId] = arg.split("|");
+    const r = await fetch("/api/models/accounts/set-active", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, config_id: configId }),
+    });
+    const d = await r.json();
+    if (d.error) { window.BAA.overlay.toast(d.error, "err"); return; }
+    window.BAA.overlay.toast(d.message || t('settings.acct_switched'), "ok");
+    await Promise.all([loadModels(), loadBuiltinProviders()]);
+  }
+
+  async function deleteAccount(configId) {
+    if (!confirm(t('confirm.delete_account') || t('confirm.delete_custom'))) return;
+    const r = await fetch("/api/models/accounts/delete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config_id: configId }),
+    });
+    const d = await r.json();
+    if (d.error) { window.BAA.overlay.toast(d.error, "err"); return; }
+    await Promise.all([loadModels(), loadBuiltinProviders()]);
+  }
+
   window.BAA.models = {
     loadModels, onModelChange, loadBuiltinProviders, renderBuiltinProviders, renderCustomList,
     editCustomModel, addCustomModel, toggleAddCustom, saveBuiltin, clearBuiltin, deleteCustom,
-    toggleThinkBudget, testModel,
+    toggleThinkBudget, testModel, addAccount, setActiveAccount, deleteAccount,
   };
 })();

@@ -45,6 +45,9 @@
     clearBuiltin:      (_el, key) => window.BAA.models.clearBuiltin(key),
     editCustom:        (_el, key) => window.BAA.models.editCustomModel(key),
     deleteCustom:      (_el, key) => window.BAA.models.deleteCustom(key),
+    addAccount:        (_el, key) => window.BAA.models.addAccount(key),
+    setActiveAccount:  (_el, arg) => window.BAA.models.setActiveAccount(arg),
+    deleteAccount:     (_el, key) => window.BAA.models.deleteAccount(key),
     toggleThinkBudget: (_el, key) => window.BAA.models.toggleThinkBudget(key),
     testProvider:      (_el, key) => window.BAA.models.testModel(key),
     toggleAcBudget:    ()         => {

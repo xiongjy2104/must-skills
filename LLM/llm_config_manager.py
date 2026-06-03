@@ -55,7 +55,16 @@ class LLMConfigManager:
             "is_custom": False,
             "context_window": 128000,
             "max_output_tokens": 16384,
-        }
+        },
+        "claude": {
+            # Anthropic's OpenAI-compatible endpoint (used via the openai SDK).
+            "base_url": "https://api.anthropic.com/v1/",
+            "model": "claude-sonnet-4-6",
+            "env_var": "ANTHROPIC_API_KEY",
+            "is_custom": False,
+            "context_window": 200000,
+            "max_output_tokens": 64000,
+        },
     }
 
     def __init__(self, load_from_env: bool = False):
