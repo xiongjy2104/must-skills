@@ -1,7 +1,11 @@
-# 智能商业分析 Agent
+# 通数 Greq · 智能商业分析 Agent
+
+> 本仓库基于 [Zafer-Liu/Data-Analysis-Agent](https://github.com/Zafer-Liu/Data-Analysis-Agent)（Apache 2.0）定制，
+> 面向**阿里云 + Lark** 技术栈扩展了数据源、模型多账号、Lark 文档导出与容器化部署。
+> 全部改造明细见 [CUSTOMIZATION.md](./CUSTOMIZATION.md)。
 
 <p align="center">
-  <img src="./Images/Banner.png" alt="智能商业分析 Agent Banner" width="100%" />
+  <img src="./Images/Banner.png" alt="通数 Greq Banner" width="100%" />
 </p>
 
 <p align="right"><a href="./README_EN.md">English</a></p>
@@ -91,7 +95,13 @@ Business Analyst Agent 是一个对话式商业数据分析系统，目标是让
 
 - 文件：Excel / CSV
 - 数据库：SQLite、MySQL、PostgreSQL、SQL Server
-- 未来计划：DuckDB、Spark
+- **阿里云 MaxCompute / DataWorks**（`pyodps`，结果灌入 DuckDB 做分析缓存）
+- **SelectDB**（MySQL 协议，复用 SQL 连接器）
+- **阿里云 OSS**（直接读取 Bucket 内的 Excel / CSV 对象）
+- **Lark 在线表格**（经 Lark MCP 服务器读取）
+
+> 阿里云 / Lark 系列数据源为本仓库定制新增，连接入口在侧边栏「添加数据源」下拉中。
+> 配置参数与脱敏说明见 [CUSTOMIZATION.md](./CUSTOMIZATION.md#a-新增数据源)。
 
 ![Data Preview](Images/Data_preview.png)
 
@@ -135,7 +145,7 @@ Business Analyst Agent 是一个对话式商业数据分析系统，目标是让
 支持：
 - DeepSeek
 - OpenAI
-- Claude
+- Claude（已作为**内置 provider**，走 Anthropic 的 OpenAI 兼容端点）
 - 任意 OpenAI SDK Compatible API
 
 支持自定义：
@@ -150,7 +160,11 @@ Business Analyst Agent 是一个对话式商业数据分析系统，目标是让
 |---|---|
 | DeepSeek | `deepseek-chat` |
 | OpenAI | `gpt-4o-mini` |
-| Anthropic | `claude-3-5-haiku-20241022` |
+| Anthropic | `claude-sonnet-4-6` |
+
+**多账号支持（定制新增）**：同一家 provider 可配置多个账号（如 Claude 的「企业版 / Pro 版」），
+在模型设置中一键切换当前账号，主账号不可用时自动跨 provider 回退。
+详见 [CUSTOMIZATION.md](./CUSTOMIZATION.md#b-模型多账号)。
 
 ## 6️⃣ 数据分析
 目前支持的数据分析功能：
@@ -168,6 +182,7 @@ Business Analyst Agent 是一个对话式商业数据分析系统，目标是让
 - 整理后的Excel表格
 - docx格式报告
 - 内置风格PPT
+- **Lark 在线文档**（定制新增，经 Lark MCP 建文档并写入章节，命令 `/larkdoc`）
 
 ![Output](Images/Output.png)
 
@@ -355,6 +370,24 @@ python app.py
 
 ---
 
+### 方式 4：Docker / 阿里云容器部署（定制新增，生产推荐）
+
+适用于阿里云 ECS / 容器服务，与你的 DataWorks / OSS 同生态、内网直连。
+
+```bash
+cp .env.example .env      # 按需填写端口等（密钥可留空，在 UI 里配置）
+docker compose up -d --build
+# 浏览器打开 http://<服务器IP>:5001
+```
+
+- **单 worker + gthread 多线程**：会话级 DuckDB 表与 MCP 后台事件循环都在进程内，不可多 worker。
+- **持久化卷**：模型账号 / MCP / 数据源配置、生成产物、上传文件分别挂载到命名卷，重建容器不丢配置。
+- **密钥经 `.env` 注入**，不进镜像；`/healthz` 提供健康检查。
+
+完整说明见 [CUSTOMIZATION.md](./CUSTOMIZATION.md#e-阿里云容器化部署)。
+
+---
+
 # 🛠 斜杠命令 
 
 | Command | Status | Description |
@@ -370,6 +403,7 @@ python app.py
 | `/trimming` | ✅ | 截尾处理（极值剔除） |
 | `/export` | ✅ | 导出数据文件 |
 | `/report` | ✅ | 导出 Word/PDF 报告 |
+| `/larkdoc` | ✅ | 导出到 Lark 在线文档（需 Lark MCP） |
 | `/ppt` | ✅ | 导出 PPT 演示文稿 |
 | `/status` | ✅ | 查看任务状态 |
 
@@ -434,6 +468,9 @@ Model
 ```
 
 即可切换模型。
+
+**多账号**：在 provider 卡片里填好账号名称（如「企业版 / Pro 版」）后点「＋ 添加为新账号」，
+即可为同一家挂多个账号；卡片下方「已配置账号」列表可「设为当前 / 删除」，顶部模型下拉随时切换。
 
 ---
 

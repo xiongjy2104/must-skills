@@ -99,7 +99,7 @@
     dashboard = await resp.json();
 
     $("db-name").textContent = dashboard.name || dashboardId;
-    document.title = `${dashboard.name || "Dashboard"} — 智析Agent`;
+    document.title = `${dashboard.name || "Dashboard"} — 通数Agent`;
 
     const meta = [];
     if (dashboard.created_at) meta.push("创建于 " + fmtDate(dashboard.created_at));

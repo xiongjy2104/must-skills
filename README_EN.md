@@ -1,7 +1,11 @@
-# Intelligent Business Analysis Agent
+# Greq · Intelligent Business Analysis Agent
+
+> Customized from [Zafer-Liu/Data-Analysis-Agent](https://github.com/Zafer-Liu/Data-Analysis-Agent) (Apache 2.0),
+> extended for an **Alibaba Cloud + Lark** stack: new data sources, multi-account models,
+> Lark Doc export, and containerized deployment. See [CUSTOMIZATION.md](./CUSTOMIZATION.md).
 
 <p align="center">
-  <img src="./Images/Banner.png" alt="Business Analysis Agent Banner" width="100%" />
+  <img src="./Images/Banner.png" alt="Greq Banner" width="100%" />
 </p>
 
 <p align="right"><a href="./README.md">中文</a></p>
@@ -93,7 +97,13 @@ Supports uploading and connecting various data sources:
 
 - Files: Excel / CSV
 - Databases: SQLite, MySQL, PostgreSQL, SQL Server
-- Planned: DuckDB, Spark
+- **Alibaba MaxCompute / DataWorks** (`pyodps`, results cached into DuckDB)
+- **SelectDB** (MySQL protocol, reuses the SQL connector)
+- **Alibaba OSS** (reads Excel / CSV objects from a bucket)
+- **Lark online sheets** (read via the Lark MCP server)
+
+> The Alibaba Cloud / Lark sources are custom additions; connect them from the
+> "Add data source" dropdown. Parameters in [CUSTOMIZATION.md](./CUSTOMIZATION.md#a-新增数据源).
 
 ![Data Preview](Images/Data_preview.png)
 
@@ -136,8 +146,12 @@ More transparent and interactive than traditional BI tools.
 Supports:
 - DeepSeek
 - OpenAI
-- Claude
+- Claude (now a **built-in provider**, via Anthropic's OpenAI-compatible endpoint)
 - Any OpenAI SDK-compatible API
+
+**Multi-account (custom)**: configure several accounts per provider (e.g. Claude
+Enterprise / Pro), switch the active one with a click, with cross-provider fallback.
+See [CUSTOMIZATION.md](./CUSTOMIZATION.md#b-模型多账号).
 
 Fully customizable:
 
@@ -151,7 +165,7 @@ Default configuration:
 |---|---|
 | DeepSeek | `deepseek-chat` |
 | OpenAI | `gpt-4o-mini` |
-| Anthropic | `claude-3-5-haiku-20241022` |
+| Anthropic | `claude-sonnet-4-6` |
 
 ---
 
@@ -173,6 +187,7 @@ Supports exporting:
 - Formatted Excel spreadsheets
 - DOCX reports
 - Built-in styled PPT presentations
+- **Lark online document** (custom; creates a doc via the Lark MCP, command `/larkdoc`)
 
 ![Output](Images/Output.png)
 
@@ -364,6 +379,26 @@ python app.py
 
 ---
 
+### Option 4: Docker / Alibaba Cloud (custom, recommended for production)
+
+For Alibaba Cloud ECS / Container Service — same ecosystem as your DataWorks / OSS.
+
+```bash
+cp .env.example .env      # set port etc.; API keys can stay empty (configure in the UI)
+docker compose up -d --build
+# open http://<server-ip>:5001
+```
+
+- **Single worker + gthread threads**: per-session DuckDB tables and the MCP
+  background loop are in-process, so multiple workers are not supported.
+- **Persistent volumes** for config (model accounts / MCP / data sources),
+  generated artifacts, and uploads — config survives container rebuilds.
+- Secrets injected via `.env` (never baked into the image); `/healthz` probe.
+
+Full details in [CUSTOMIZATION.md](./CUSTOMIZATION.md#e-阿里云容器化部署).
+
+---
+
 # 🛠 Slash Commands
 
 | Command | Status | Description |
@@ -379,6 +414,7 @@ python app.py
 | `/trimming` | ✅ | Trimming (remove extreme values) |
 | `/export` | ✅ | Export data file |
 | `/report` | ✅ | Export Word/PDF report |
+| `/larkdoc` | ✅ | Export to a Lark online document (needs Lark MCP) |
 | `/ppt` | ✅ | Export PPT presentation |
 | `/status` | ✅ | View task status |
 
@@ -441,6 +477,11 @@ Model
 ```
 
 You can switch models at any time.
+
+**Multi-account**: enter an account name (e.g. "Enterprise / Pro") in a provider
+card and click "Add as new account" to attach multiple accounts to one provider;
+the "Configured accounts" list lets you set-active / delete, and the top model
+dropdown switches between them.
 
 ---
 
