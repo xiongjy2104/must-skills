@@ -46,7 +46,7 @@ if __name__ == "__main__":
     # Vercel 用 PORT，本地默认 5001
     port = int(os.environ.get("PORT") or os.environ.get("AGENT_PORT", 5001))
     print(f"\n  Business Analyst Agent → http://localhost:{port}\n")
-    # 本地 debug=True，Vercel 会自动处理。
-    # use_reloader=False：关掉自动重载器，避免它 fork 的子进程在关闭窗口后
-    # 残留占用端口，导致 start.bat 下次启动时端口检测失败。
-    app.run(host="0.0.0.0", port=port, debug=not is_vercel, use_reloader=False)
+    # 本地 debug=True 开启自动重载器（改代码即自动加载新功能）。reloader 会
+    # fork 子进程，关闭窗口后可能残留占用端口——start.bat 已在启动前自动结束
+    # 占用该端口的旧进程，故这里可以放心保留 reloader。Vercel 自动处理。
+    app.run(host="0.0.0.0", port=port, debug=not is_vercel)
