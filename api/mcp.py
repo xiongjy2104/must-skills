@@ -213,3 +213,42 @@ def server_tools(server_id: str):
         return jsonify({"error": "服务器不存在"}), 404
     tools = mcp_mgr.get_server_tools(server_id)
     return jsonify({"server_id": server_id, "tools": tools})
+
+
+@bp.post("/api/mcp/load-local-claude")
+def load_local_claude():
+    """从本地 Claude Desktop / Claude Code / Cursor 配置导入 MCP server。"""
+    d = request.json or {}
+    allowed = d.get("allowed_servers") or None  # list or None
+    config_paths = d.get("config_paths") or None
+
+    from agent.mcp_manager import get_mcp_manager
+    mcp_mgr = get_mcp_manager()
+
+    def _bg():
+        mcp_mgr.load_from_local_claude(
+            config_paths=config_paths,
+            allowed_servers=allowed,
+        )
+
+    threading.Thread(target=_bg, daemon=True, name="mcp-load-local").start()
+    return jsonify({"ok": True, "message": "正在扫描本地 Claude 配置并连接…"})
+
+
+@bp.get("/api/mcp/local-claude/preview")
+def preview_local_claude():
+    """预览本地能发现的 MCP server（不连接）。"""
+    try:
+        from agent.local_mcp_loader import load_servers
+        specs = load_servers()
+        result = []
+        for name, spec in specs.items():
+            entry = {"name": name, "transport": spec.transport}
+            if spec.is_stdio:
+                entry["command"] = f"{spec.command} {' '.join(spec.args)}".strip()
+            else:
+                entry["url"] = spec.url
+            result.append(entry)
+        return jsonify({"servers": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

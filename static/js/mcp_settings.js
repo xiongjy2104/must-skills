@@ -307,3 +307,44 @@ function _clearMcpForm() {
   onMcpTransportChange();
   _mcpEditId = null;
 }
+
+/* ── 从本地 Claude 配置导入 ────────────────────────────────────────── */
+
+async function previewLocalClaude() {
+  const el = document.getElementById("local-claude-preview");
+  if (el) el.textContent = "扫描中…";
+  try {
+    const r = await fetch("/api/mcp/local-claude/preview");
+    const data = await r.json();
+    if (data.error) {
+      if (el) el.textContent = "扫描失败: " + data.error;
+      return;
+    }
+    if (!data.servers || !data.servers.length) {
+      if (el) el.textContent = "未发现任何 MCP server（Claude Desktop / Code / Cursor 均未配置）";
+      return;
+    }
+    const lines = data.servers.map(s =>
+      `• ${_esc(s.name)} [${s.transport}]  ${_esc(s.command || s.url || "")}`
+    );
+    if (el) el.innerHTML = lines.join("<br>");
+  } catch (e) {
+    if (el) el.textContent = "请求失败: " + e.message;
+  }
+}
+
+async function loadLocalClaude() {
+  try {
+    const r = await fetch("/api/mcp/load-local-claude", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: "{}" });
+    const data = await r.json();
+    if (data.ok) {
+      showToast(data.message || "已触发导入，稍后刷新 server 列表", "success");
+      setTimeout(loadMcpServers, 3000);
+    } else {
+      showToast("导入失败: " + (data.error || "未知错误"), "error");
+    }
+  } catch (e) {
+    showToast("请求失败: " + e.message, "error");
+  }
+}

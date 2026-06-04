@@ -110,9 +110,9 @@ class BaseTransport(ABC):
 
 
 class StdioTransport(BaseTransport):
-    def __init__(self, command: str, args: List[str], env: Dict[str, str]):
+    def __init__(self, command: str, args: List[str], env: Dict[str, str], trusted: bool = False):
         basename = os.path.basename(command)
-        if basename not in STDIO_ALLOWED_COMMANDS:
+        if not trusted and basename not in STDIO_ALLOWED_COMMANDS:
             raise ValueError(f"命令 '{command}' 不在白名单中")
         self._command = command
         self._args = args
@@ -358,8 +358,9 @@ class MCPServerConnection:
 
     def _build_transport(self) -> BaseTransport:
         cfg = self._config
+        trusted = getattr(cfg, "trusted", False)
         if cfg.transport == "stdio":
-            return StdioTransport(cfg.command, cfg.args, cfg.env)
+            return StdioTransport(cfg.command, cfg.args, cfg.env, trusted=trusted)
         elif cfg.transport == "sse":
             return SSETransport(cfg.url, cfg.headers)
         else:
@@ -501,6 +502,78 @@ class MCPManager:
             with self._lock:
                 if cfg.server_id not in self._connections:
                     self._connections[cfg.server_id] = MCPServerConnection(cfg)
+
+    def load_from_local_claude(
+        self,
+        config_paths: Optional[List[str]] = None,
+        allowed_servers: Optional[List[str]] = None,
+        prefix: str = "_local_",
+        auto_connect: bool = True,
+    ) -> List[dict]:
+        """从本地 Claude Desktop / Claude Code / Cursor 配置文件导入 MCP server。
+
+        这些 server 绑定用户机器上已有的配置，command 来源可信，跳过白名单检查。
+
+        Args:
+            config_paths: 指定配置文件路径；None 时自动扫描所有客户端默认位置。
+            allowed_servers: 只导入这些 server 名（None 表示全部）。
+            prefix: 导入的 server_id 前缀，用于与手动添加的 server 区分。
+            auto_connect: 导入后立即尝试连接。
+
+        Returns:
+            每个被注册/更新的 server 的状态 dict 列表。
+        """
+        try:
+            from agent.local_mcp_loader import load_servers, ServerSpec
+        except ImportError:
+            from local_mcp_loader import load_servers, ServerSpec
+
+        specs: Dict[str, Any] = load_servers(config_paths=config_paths)
+
+        results = []
+        for name, spec in specs.items():
+            if allowed_servers and name not in allowed_servers:
+                continue
+
+            server_id = f"{prefix}{name}"
+
+            # Build a config-like object the existing MCPServerConnection can use
+            class _Cfg:
+                pass
+
+            cfg = _Cfg()
+            cfg.server_id = server_id
+            cfg.label = name
+            cfg.trusted = True        # bypass command whitelist — from user's own machine
+
+            if spec.is_stdio:
+                cfg.transport = "stdio"
+                cfg.command = spec.command or ""
+                cfg.args = list(spec.args)
+                cfg.env = dict(spec.env)
+                cfg.url = ""
+                cfg.headers = {}
+            else:
+                cfg.transport = "sse"
+                cfg.command = ""
+                cfg.args = []
+                cfg.env = {}
+                cfg.url = spec.url or ""
+                cfg.headers = dict(spec.headers)
+
+            with self._lock:
+                # Replace existing entry so re-imports pick up config changes
+                self._connections[server_id] = MCPServerConnection(cfg)
+
+            log.info("[MCPManager] 从本地配置导入: %s (%s)", server_id, spec.transport)
+
+            if auto_connect:
+                status = self.connect_server(server_id)
+            else:
+                status = {"server_id": server_id, "status": "registered"}
+            results.append(status)
+
+        return results
 
     def add_server(self, config) -> None:
         with self._lock:
