@@ -122,12 +122,18 @@ class StdioTransport(BaseTransport):
         self._lock = asyncio.Lock()
 
     async def connect(self) -> None:
-        self._proc = await asyncio.create_subprocess_exec(
-            self._command, *self._args,
+        kwargs: Dict[str, Any] = dict(
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=self._env,
+        )
+        # On Windows, spawning npx/uvx (via cmd /c) pops a visible console
+        # window for every child process. CREATE_NO_WINDOW hides them.
+        if os.name == "nt":
+            kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+        self._proc = await asyncio.create_subprocess_exec(
+            self._command, *self._args, **kwargs,
         )
         await self._initialize()
 
