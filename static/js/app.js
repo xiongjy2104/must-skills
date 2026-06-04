@@ -25,6 +25,8 @@
     loadSavedList:     () => window.BAA.sessions.loadSavedList(),
     openMcpSettings:   () => window.openMcpSettings(),
     loadMcpServers:    () => window.loadMcpServers(),
+    previewLocalClaude: () => window.previewLocalClaude(),
+    loadLocalClaude:    () => window.loadLocalClaude(),
     toggleLang:        () => window.setLang(window.getLang() === 'zh' ? 'en' : 'zh'),
     toggleTheme:       () => window.BAA.theme.toggleTheme(),
 

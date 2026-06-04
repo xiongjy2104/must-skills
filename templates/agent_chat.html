@@ -595,6 +595,19 @@
       </div>
     </div>
 
+    <!-- Import from local Claude config -->
+    <div class="settings-sec">
+      <div class="settings-sec-title">从本地 Claude 配置导入</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:8px">
+        自动扫描 Claude Desktop / Claude Code / Cursor 已配置的 MCP server，复用到本平台。
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn-sm btn-sm-ghost" data-action="previewLocalClaude">预览可导入的 server</button>
+        <button class="btn-sm btn-sm-primary" data-action="loadLocalClaude">导入并连接</button>
+      </div>
+      <div id="local-claude-preview" style="margin-top:8px;font-size:12px;color:#475569"></div>
+    </div>
+
     <!-- Add server form -->
     <div class="settings-sec">
       <div class="add-custom-toggle" id="mcp-add-toggle" data-action="toggleMcpAddForm">＋ 添加 MCP 服务器</div>
