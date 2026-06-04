@@ -226,10 +226,11 @@ Upload domain knowledge to help the Agent better understand your data.
 **Windows users**
 
 ```bat
-start.bat
+run.bat
 ```
 
-> Note: The first run of `start.bat` will automatically set up the environment — this may take a while. Subsequent runs will be much faster.
+> Note: The first run of `run.bat` will automatically set up the environment — this may take a while. Subsequent runs will be much faster.
+> In PowerShell, run it as `.\run.bat` (typing `run.bat` works too; double-clicking the file is easiest).
 
 **Mac users**
 

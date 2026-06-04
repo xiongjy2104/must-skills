@@ -216,10 +216,11 @@ Business Analyst Agent 是一个对话式商业数据分析系统，目标是让
 **Windows 用户**
 
 ```bat
-start.bat
+run.bat
 ```
 
-> 注：首次启动 `start.bat` 会自动配置运行环境，时间可能较长，后续再次运行就无需等待。
+> 注：首次启动 `run.bat` 会自动配置运行环境，时间可能较长，后续再次运行就无需等待。
+> 在 PowerShell 中运行请用 `.\run.bat`（直接输入 `run.bat` 也可，双击文件最省事）。
 
 **Mac 用户**
 
