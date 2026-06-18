@@ -103,10 +103,50 @@ function blockText(lines: string[], b: Located): string {
 }
 
 // ---------------------------------------------------------------------------
-// Reverse-patch application (delete / replace / insert by block id)
+// Reverse-patch application (delete / replace / insert / move by block key)
 // ---------------------------------------------------------------------------
 
-interface Op { kind: "delete" | "replace" | "insert"; id?: string; blob?: string; anchor?: string; }
+// Block-key = `#id` (explicit) or `@<8hex content hash>` (derived), with `~n`
+// disambiguating equal-content id-less blocks by document-order occurrence (§4).
+const KEY = String.raw`(#[A-Za-z][A-Za-z0-9_-]*|@[0-9a-f]+(?:~\d+)?)`;
+
+function sha8(s: string): string {
+  return createHash("sha256").update(Buffer.from(s, "utf8")).digest("hex").slice(0, 8);
+}
+
+interface Keyed { b: Located; key: string; }
+
+function keyedBlocks(lines: string[]): Keyed[] {
+  const counts = new Map<string, number>();
+  return locate(lines).map((b) => {
+    if (b.id) return { b, key: `#${b.id}` };
+    const h = sha8(blockText(lines, b));
+    const n = counts.get(h) ?? 0;
+    counts.set(h, n + 1);
+    return { b, key: n === 0 ? `@${h}` : `@${h}~${n}` };
+  });
+}
+
+function locateByKey(lines: string[], key: string): Located {
+  const kb = keyedBlocks(lines).find((x) => x.key === key);
+  if (!kb) throw new Error(`history: block ${key} not found while applying reverse patch`);
+  return kb.b;
+}
+
+type Anchor = "at-start" | "at-end" | { after: string };
+
+interface Op { kind: "delete" | "replace" | "insert" | "move"; key?: string; blob?: string; anchor?: Anchor; }
+
+function parseAnchor(s: string): Anchor {
+  if (s === "at-start" || s === "at-end") return s;
+  const m = new RegExp("^after\\s+" + KEY + "$").exec(s);
+  if (!m) throw new Error(`history: bad anchor: ${s}`);
+  return { after: m[1]! };
+}
+
+function anchorStr(a: Anchor): string {
+  return a === "at-start" || a === "at-end" ? a : `after ${a.after}`;
+}
 
 function parseOps(body: string): Op[] {
   const ops: Op[] = [];
@@ -114,12 +154,14 @@ function parseOps(body: string): Op[] {
     const line = raw.trim();
     if (!line) continue;
     let m: RegExpExecArray | null;
-    if ((m = /^delete\s+#([A-Za-z][A-Za-z0-9_-]*)$/.exec(line))) {
-      ops.push({ kind: "delete", id: m[1]! });
-    } else if ((m = /^replace\s+#([A-Za-z][A-Za-z0-9_-]*)\s+<-\s+blob:(\S+)$/.exec(line))) {
-      ops.push({ kind: "replace", id: m[1]!, blob: m[2]! });
-    } else if ((m = /^insert\s+<-\s+blob:(\S+)\s+(?:after\s+#([A-Za-z][A-Za-z0-9_-]*)|(at-start|at-end))$/.exec(line))) {
-      ops.push({ kind: "insert", blob: m[1]!, anchor: m[2] ?? m[3]! });
+    if ((m = new RegExp("^delete\\s+" + KEY + "$").exec(line))) {
+      ops.push({ kind: "delete", key: m[1]! });
+    } else if ((m = /^replace\s+(#[A-Za-z][A-Za-z0-9_-]*)\s+<-\s+blob:(\S+)$/.exec(line))) {
+      ops.push({ kind: "replace", key: m[1]!, blob: m[2]! });
+    } else if ((m = /^insert\s+<-\s+blob:(\S+)\s+(.+)$/.exec(line))) {
+      ops.push({ kind: "insert", blob: m[1]!, anchor: parseAnchor(m[2]!) });
+    } else if ((m = new RegExp("^move\\s+" + KEY + "\\s+(.+)$").exec(line))) {
+      ops.push({ kind: "move", key: m[1]!, anchor: parseAnchor(m[2]!) });
     } else {
       throw new Error(`history: unrecognized reverse-patch op: ${line}`);
     }
@@ -127,37 +169,44 @@ function parseOps(body: string): Op[] {
   return ops;
 }
 
+// A block owns one trailing blank line, if present, so add/remove/move carries
+// the inter-block spacing with it (keeps reconstruction byte-exact).
+function blockRange(lines: string[], b: Located): [number, number] {
+  let end = b.end + 1;
+  if (end < lines.length && lines[end] === "") end++;
+  return [b.start, end];
+}
+
+function insertAfter(lines: string[], anchor: Anchor, payload: string[]): void {
+  if (anchor === "at-start") { lines.splice(0, 0, ...payload, ""); return; }
+  if (anchor === "at-end") { lines.push("", ...payload); return; }
+  const a = locateByKey(lines, anchor.after);
+  lines.splice(a.end + 1, 0, "", ...payload);
+}
+
 /** Apply a reverse patch to `textLf`, returning the parent-revision text. */
 function applyReverse(textLf: string, ops: Op[], blobs: Map<string, string>): string {
-  let lines = textLf.split("\n");
-  const find = (id: string): Located => {
-    const b = locate(lines).find((x) => x.id === id);
-    if (!b) throw new Error(`history: block #${id} not found while applying reverse patch`);
-    return b;
+  const lines = textLf.split("\n");
+  const blob = (id: string): string[] => {
+    const p = blobs.get(id);
+    if (p === undefined) throw new Error(`history: unresolved blob:${id}`);
+    return p.split("\n");
   };
   for (const op of ops) {
     if (op.kind === "delete") {
-      const b = find(op.id!);
-      let end = b.end + 1;
-      if (end < lines.length && lines[end] === "") end++; // absorb one trailing blank
-      lines.splice(b.start, end - b.start);
+      const [s, e] = blockRange(lines, locateByKey(lines, op.key!));
+      lines.splice(s, e - s);
     } else if (op.kind === "replace") {
-      const b = find(op.id!);
-      const payload = blobs.get(op.blob!);
-      if (payload === undefined) throw new Error(`history: unresolved blob:${op.blob}`);
-      lines.splice(b.start, b.end - b.start + 1, ...payload.split("\n"));
-    } else {
-      const payload = blobs.get(op.blob!);
-      if (payload === undefined) throw new Error(`history: unresolved blob:${op.blob}`);
-      const ins = [...payload.split("\n"), ""]; // block + one trailing blank
-      if (op.anchor === "at-start") {
-        lines.splice(0, 0, ...ins);
-      } else if (op.anchor === "at-end") {
-        lines.push(...ins);
-      } else {
-        const a = find(op.anchor!);
-        lines.splice(a.end + 1, 0, "", ...payload.split("\n"));
-      }
+      const b = locateByKey(lines, op.key!);
+      lines.splice(b.start, b.end - b.start + 1, ...blob(op.blob!));
+    } else if (op.kind === "insert") {
+      insertAfter(lines, op.anchor!, blob(op.blob!));
+    } else { // move: cut the block (with its owned blank) and re-insert at anchor
+      const b = locateByKey(lines, op.key!);
+      const [s, e] = blockRange(lines, b);
+      const cut = lines.slice(b.start, b.end + 1);
+      lines.splice(s, e - s);
+      insertAfter(lines, op.anchor!, cut);
     }
   }
   return lines.join("\n");
@@ -172,45 +221,54 @@ interface Patch { ops: Op[]; blobs: { id: string; payload: string }[]; }
 function diffReverse(oldLf: string, newLf: string): Patch {
   const oldLines = oldLf.split("\n");
   const newLines = newLf.split("\n");
-  const oldB = locate(oldLines).filter((b) => b.id);
-  const newB = locate(newLines).filter((b) => b.id);
-  const oldById = new Map(oldB.map((b) => [b.id!, b]));
-  const newById = new Map(newB.map((b) => [b.id!, b]));
+  const oldK = keyedBlocks(oldLines);
+  const newK = keyedBlocks(newLines);
+  const oldByKey = new Map(oldK.map((k) => [k.key, k]));
+  const newByKey = new Map(newK.map((k) => [k.key, k]));
 
   const ops: Op[] = [];
   const blobs: { id: string; payload: string }[] = [];
+  let blobN = 0;
+  const addBlob = (payload: string): string => { const id = `b${++blobN}`; blobs.push({ id, payload }); return id; };
 
-  // added in new -> reverse deletes
-  for (const b of newB) {
-    if (!oldById.has(b.id!)) ops.push({ kind: "delete", id: b.id! });
-  }
-  // modified -> reverse replaces (carry old content)
-  for (const b of newB) {
-    const o = oldById.get(b.id!);
-    if (o && blockText(oldLines, o) !== blockText(newLines, b)) {
-      const bid = `b-${b.id!}`;
-      blobs.push({ id: bid, payload: blockText(oldLines, o) });
-      ops.push({ kind: "replace", id: b.id!, blob: bid });
+  // 1. added in new (key absent in old) -> reverse delete
+  for (const nk of newK) if (!oldByKey.has(nk.key)) ops.push({ kind: "delete", key: nk.key });
+
+  // 2. id'd block present in both but content changed -> reverse replace
+  for (const nk of newK) {
+    if (!nk.key.startsWith("#")) continue;
+    const ok = oldByKey.get(nk.key);
+    if (ok && blockText(oldLines, ok.b) !== blockText(newLines, nk.b)) {
+      ops.push({ kind: "replace", key: nk.key, blob: addBlob(blockText(oldLines, ok.b)) });
     }
   }
-  // removed from new -> reverse inserts (carry old content + anchor)
-  for (let i = 0; i < oldB.length; i++) {
-    const o = oldB[i]!;
-    if (!newById.has(o.id!)) {
-      const bid = `b-${o.id!}`;
-      blobs.push({ id: bid, payload: blockText(oldLines, o) });
-      const prev = oldB[i - 1];
-      ops.push({ kind: "insert", blob: bid, anchor: prev ? prev.id! : "at-start" });
+
+  // 3. removed from new (only in old) -> reverse insert, anchored by preceding old block
+  for (let i = 0; i < oldK.length; i++) {
+    const ok = oldK[i]!;
+    if (!newByKey.has(ok.key)) {
+      const prev = oldK[i - 1];
+      ops.push({ kind: "insert", blob: addBlob(blockText(oldLines, ok.b)), anchor: prev ? { after: prev.key } : "at-start" });
+    }
+  }
+
+  // 4. moves: blocks common to both whose relative order differs -> rebuild old order
+  const common = oldK.map((k) => k.key).filter((k) => newByKey.has(k));
+  const newOrder = newK.map((k) => k.key).filter((k) => oldByKey.has(k));
+  if (common.join(" ") !== newOrder.join(" ")) {
+    for (let i = 0; i < common.length; i++) {
+      const prev = i > 0 ? common[i - 1]! : null;
+      ops.push({ kind: "move", key: common[i]!, anchor: prev ? { after: prev } : "at-start" });
     }
   }
   return { ops, blobs };
 }
 
 function opLine(op: Op): string {
-  if (op.kind === "delete") return `delete #${op.id}`;
-  if (op.kind === "replace") return `replace #${op.id} <- blob:${op.blob}`;
-  const anchor = op.anchor === "at-start" || op.anchor === "at-end" ? op.anchor : `after #${op.anchor}`;
-  return `insert <- blob:${op.blob} ${anchor}`;
+  if (op.kind === "delete") return `delete ${op.key}`;
+  if (op.kind === "replace") return `replace ${op.key} <- blob:${op.blob}`;
+  if (op.kind === "insert") return `insert <- blob:${op.blob} ${anchorStr(op.anchor!)}`;
+  return `move ${op.key} ${anchorStr(op.anchor!)}`;
 }
 
 // ---------------------------------------------------------------------------
